@@ -9,23 +9,55 @@ apkrepotool - manage APK repos
 FIXME
 """
 
+import binascii
+import hashlib
+import struct
 import subprocess
 import sys
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, Iterator, List, Set, Tuple
 
-# FIXME: needs proper release & dependency
-import repro_apk.binres as binres
+import apksigcopier
+import repro_apk.binres as binres       # FIXME: needs proper release & dependency
 
 from ruamel.yaml import YAML
 
 __version__ = "0.0.0"
 NAME = "apkrepotool"
 
+APK_SIGNATURE_SCHEME_V2_BLOCK_ID = 0x7109871a
+APK_SIGNATURE_SCHEME_V3_BLOCK_ID = 0xf05368c0
+APK_SIGNATURE_SCHEME_V31_BLOCK_ID = 0x1b93ad61
+VERITY_PADDING_BLOCK_ID = 0x42726577
+
 
 class Error(Exception):
     """Base class for errors."""
+
+
+class SigError(Error):
+    """Signature (verification) error."""
+
+
+@dataclass(frozen=True)
+class Block:
+    """Block from APK Signing Block."""
+    data: bytes
+
+
+@dataclass(frozen=True)
+class APKSignatureSchemeBlock(Block):
+    """APK Signature Scheme v2/v3 Block."""
+    version: int
+    certificates: List[bytes]
+
+
+@dataclass(frozen=True)
+class Pair:
+    """Pair from APK Signing Block."""
+    id: int
+    value: Block
 
 
 # FIXME
@@ -44,7 +76,8 @@ class Apk:
     appid: str
     version_code: int
     version_name: str
-    signing_key: str
+    signing_key_fingerprint: str
+    fdroid_sig: str
 
 
 # FIXME
@@ -78,38 +111,149 @@ def get_apk_info(apkfile: str) -> Apk:
 
     >>> apk = get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
     >>> apk
-    Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8')
+    Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key_fingerprint='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8', fdroid_sig='506ceb2a3116981827a3990f3446d3af')
 
     """
     appid, vercode, vername = binres.quick_get_idver(apkfile)
-    return Apk(filename=apkfile, appid=appid, version_code=vercode,
-               version_name=vername, signing_key=get_signing_key(apkfile))
+    fingerprint = get_signing_cert_fingerprint(apkfile)     # verify w/ apksigner first!
+    certs = get_signing_certs(apkfile)
+    for cert in certs:
+        if fingerprint == hashlib.sha256(cert).hexdigest():
+            sig = get_fdroid_sig(cert)
+            break
+    else:
+        raise SigError("SHA-256 fingerprint mismatch")
+    return Apk(filename=apkfile, appid=appid, version_code=vercode, version_name=vername,
+               signing_key_fingerprint=fingerprint, fdroid_sig=sig)
 
 
-def get_signing_key(apkfile: str) -> str:
-    """Get APK signing key SHA-256 fingerprint using apksigner."""
+def get_signing_cert_fingerprint(apkfile: str) -> str:
+    """
+    Get APK signing key certificate SHA-256 fingerprint using apksigner.
+
+    NB: this validates the signature(s)!
+    """
     prefix = "Signer #1 certificate SHA-256 digest: "
     hexdigit = "01234567890abcdef"
-    args = ("apksigner", "verify", "--print-certs", "--", apkfile)
-    for line in run_command(*args).splitlines():
+    try:
+        output = run_command("apksigner", "verify", "--print-certs", "--", apkfile)
+    except subprocess.CalledProcessError as e:
+        raise SigError(f"Verification with apksigner failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run apksigner: {e}") from e
+    for line in output.splitlines():
         if line.startswith(prefix):
             fingerprint = line[len(prefix):]
             if len(fingerprint) == 64 and all(c in hexdigit for c in fingerprint):
                 return fingerprint
-            raise Error(f"Malformed fingerprint: {fingerprint!r}")
-    raise Error("No signer found")
+            raise SigError(f"Malformed fingerprint: {fingerprint!r}")
+    raise SigError("No signer found")
+
+
+def get_fdroid_sig(cert: bytes) -> str:
+    """
+    Get F-Droid APK sig (MD5 of hexdump of certificate).
+
+    NB: this does not validate anything; use after get_signing_cert_fingerprint()!
+    """
+    return hashlib.md5(binascii.hexlify(cert)).hexdigest()
+
+
+def get_signing_certs(apkfile: str) -> Set[bytes]:
+    """
+    Get APK signing key certificates by partially parsing the APK Signing Block.
+
+    NB: this does not validate anything; use after get_signing_cert_fingerprint()!
+    """
+    extracted_v2_sig = apksigcopier.extract_v2_sig(apkfile)
+    assert extracted_v2_sig is not None
+    _, sig_block = extracted_v2_sig
+    certs = set()
+    for p in parse_apk_signing_block(sig_block):
+        if isinstance(p.value, APKSignatureSchemeBlock):
+            certs.add(p.value.certificates[0])
+    return certs
+
+
+def parse_apk_signing_block(data: bytes) -> Iterator[Pair]:
+    """
+    Partially parse APK Signing Block (a sequence of pairs).
+
+    NB: this is not a full parser!  Just enough to get the certificates.
+    """
+    magic = data[-16:]
+    sb_size1 = int.from_bytes(data[:8], "little")
+    sb_size2 = int.from_bytes(data[-24:-16], "little")
+    if magic != b"APK Sig Block 42":
+        raise SigError("APK Sig Block magic mismatch")
+    if not (sb_size1 == sb_size2 == len(data) - 8):
+        raise SigError("APK Sig Block size mismatch")
+    data = data[8:-24]
+    while data:
+        value: Block
+        pair_len, pair_id = struct.unpack("<QL", data[:12])
+        pair_val, data = data[12:8 + pair_len], data[8 + pair_len:]
+        if pair_id == APK_SIGNATURE_SCHEME_V2_BLOCK_ID:
+            value = parse_apk_signature_scheme_block(pair_val, 2)
+        elif pair_id == APK_SIGNATURE_SCHEME_V3_BLOCK_ID:
+            value = parse_apk_signature_scheme_block(pair_val, 3)
+        elif pair_id == APK_SIGNATURE_SCHEME_V31_BLOCK_ID:
+            value = parse_apk_signature_scheme_block(pair_val, 31)
+        elif pair_id == VERITY_PADDING_BLOCK_ID:
+            if not all(b == 0 for b in pair_val):
+                raise SigError("Verity zero padding mismatch")
+            value = Block(pair_val)
+        else:
+            value = Block(pair_val)
+        yield Pair(pair_id, value)
+
+
+def parse_apk_signature_scheme_block(data: bytes, version: int) -> APKSignatureSchemeBlock:
+    """
+    Partially parse APK Signature Scheme v2/v3 Block.
+
+    NB: this is not a full parser!  Just enough to get the certificates.
+    """
+    certificates = []
+    seq_len, data = int.from_bytes(data[:4], "little"), data[4:]
+    if seq_len != len(data):
+        raise SigError("APK Signature Scheme Block size mismatch")
+    while data:
+        d_signer, data = _split_len_prefixed_field(data)
+        signed_data, _ = _split_len_prefixed_field(d_signer)
+        d_digests, signed_data = _split_len_prefixed_field(signed_data)
+        d_certs, _ = _split_len_prefixed_field(signed_data)
+        while d_certs:
+            cert, d_certs = _split_len_prefixed_field(d_certs)
+            certificates.append(cert)
+    return APKSignatureSchemeBlock(data, version, certificates)
+
+
+def _split_len_prefixed_field(data: bytes) -> Tuple[bytes, bytes]:
+    """
+    Parse length-prefixed field (length is little-endian, uint32) at beginning
+    of data.
+
+    Returns (field data, remaining data).
+    """
+    if len(data) < 4:
+        raise SigError("Prefixed field must be at least 4 bytes")
+    field_len = int.from_bytes(data[:4], "little")
+    if len(data) < 4 + field_len:
+        raise SigError("Prefixed field size mismatch")
+    return data[4:4 + field_len], data[4 + field_len:]
 
 
 # FIXME
-def make_index_v1(repo_dir: str, apps: List[App], apks: List[Apk]) -> None:
+def make_index_v1(apps: List[App], apks: List[Apk]) -> None:
     """Make v1 index."""
-    repo_dir, apps, apks
+    apps, apks
 
 
 # FIXME
-def make_index_v2(repo_dir: str, apps: List[App], apks: List[Apk]) -> None:
+def make_index_v2(apps: List[App], apks: List[Apk]) -> None:
     """Make v2 index."""
-    repo_dir, apps, apks
+    apps, apks
 
 
 def run_command(*args: str, verbose: bool = False) -> str:
@@ -170,7 +314,7 @@ def main() -> None:
 
     try:
         cli(prog_name=NAME)
-    except (Error, subprocess.CalledProcessError, binres.Error) as e:
+    except (Error, binres.Error) as e:
         print(f"Error: {e}.", file=sys.stderr)
         sys.exit(1)
 
