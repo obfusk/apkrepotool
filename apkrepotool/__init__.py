@@ -16,7 +16,8 @@ import subprocess
 import sys
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import apksigcopier
 import repro_apk.binres as binres       # FIXME: needs proper release & dependency
@@ -95,6 +96,19 @@ class Config:
 
 
 # FIXME
+@dataclass(frozen=True)
+class Metadata:
+    """App metadata."""
+    title: Optional[str]
+    short_description: Optional[str]
+    full_description: Optional[str]
+    changelogs: Dict[int, str]
+    icon_file: Optional[Path]
+    feature_graphic_file: Optional[Path]
+    phone_screenshots_files: List[Path]
+
+
+# FIXME
 def parse_recipe_yaml(recipe_file: str) -> App:
     r"""
     Parse recipe YAML.
@@ -133,6 +147,52 @@ def parse_config_yaml(config_file: str) -> Config:
         data = yaml.load(fh)
         return Config(repo_url=data["repo_url"], repo_name=data["repo_name"],
                       repo_description=data["repo_description"])
+
+
+# FIXME
+def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Metadata]:
+    r"""
+    Parse (fastlane) metadata.
+
+    >>> app_dir = Path("test/metadata/android.appsecurity.cts.tinyapp")
+    >>> meta = parse_app_metadata(app_dir, [10])
+    >>> sorted(meta.keys())
+    ['en-US']
+    >>> meta["en-US"]
+    Metadata(title='title', short_description='short description', full_description='full description\n', changelogs={10: 'changelog for version code 10\n'}, icon_file=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/icon.png'), feature_graphic_file=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/featureGraphic.png'), phone_screenshots_files=[PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/01.png'), PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/02.png')])
+
+    """
+    metadata = {}
+    for locale_dir in sorted(app_dir.iterdir()):
+        title_path = locale_dir / "title.txt"
+        short_desc_path = locale_dir / "short_description.txt"
+        full_desc_path = locale_dir / "full_description.txt"
+        changelog_dir = locale_dir / "changelogs"
+        images_dir = locale_dir / "images"
+        title = title_path.read_text().strip() if title_path.exists() else None
+        short_desc = short_desc_path.read_text().strip() if short_desc_path.exists() else None
+        full_desc = full_desc_path.read_text() if full_desc_path.exists() else None
+        changelogs = {}
+        if changelog_dir.exists():
+            for changelog in sorted(changelog_dir.glob("*.txt")):
+                if changelog.stem.isdigit():
+                    version_code = int(changelog.stem)
+                    if version_code in version_codes:
+                        changelogs[version_code] = changelog.read_text()
+        if images_dir.exists():
+            icon_path = images_dir / "icon.png"
+            fg_path = images_dir / "featureGraphic.png"
+            ps_dir = images_dir / "phoneScreenshots"
+            icon_file = icon_path if icon_path.exists() else None
+            fg_file = fg_path if fg_path.exists() else None
+            ps_files = sorted(ps_dir.glob("*.png")) if ps_dir.exists() else []
+        else:
+            icon_file, fg_file, ps_files = None, None, []
+        metadata[locale_dir.name] = Metadata(
+            title=title, short_description=short_desc, full_description=full_desc,
+            changelogs=changelogs, icon_file=icon_file, feature_graphic_file=fg_file,
+            phone_screenshots_files=ps_files)
+    return metadata
 
 
 # FIXME
