@@ -81,6 +81,20 @@ class Apk:
 
 
 # FIXME
+@dataclass(frozen=True)
+class Config:
+    """Config."""
+    repo_url: str
+    repo_name: str
+    repo_description: str
+    # repo_keyalias: str
+    # keystore: str
+    # keystorepass: str
+    # keypass: str
+    # keydname: str
+
+
+# FIXME
 def parse_recipe_yaml(recipe_file: str) -> App:
     r"""
     Parse recipe YAML.
@@ -102,6 +116,23 @@ def parse_recipe_yaml(recipe_file: str) -> App:
         else:
             allowed_apk_signing_keys = []
         return App(name=name, allowed_apk_signing_keys=allowed_apk_signing_keys)
+
+
+# FIXME
+def parse_config_yaml(config_file: str) -> Config:
+    r"""
+    Parse config YAML.
+
+    >>> cfg = parse_config_yaml("test/config.yml")
+    >>> cfg
+    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.')
+
+    """
+    with open(config_file, encoding="utf-8") as fh:
+        yaml = YAML(typ="safe")
+        data = yaml.load(fh)
+        return Config(repo_url=data["repo_url"], repo_name=data["repo_name"],
+                      repo_description=data["repo_description"])
 
 
 # FIXME

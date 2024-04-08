@@ -1,0 +1,6 @@
+repo_url: https://example.com/fdroid/repo
+repo_name: My Repo
+repo_description: >-
+  This is a repository of apps to be used with an F-Droid-compatible client.
+  Applications in this repository are official binaries built by the original
+  application developers.
