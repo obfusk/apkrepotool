@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Set, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import apksigcopier
 import repro_apk.binres as binres       # FIXME: needs proper release & dependency
@@ -76,7 +76,7 @@ class Apk:
     appid: str
     version_code: int
     version_name: str
-    signing_key_fingerprint: str
+    signing_key: str
     fdroid_sig: str
 
 
@@ -111,20 +111,20 @@ def get_apk_info(apkfile: str) -> Apk:
 
     >>> apk = get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
     >>> apk
-    Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key_fingerprint='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8', fdroid_sig='506ceb2a3116981827a3990f3446d3af')
+    Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8', fdroid_sig='506ceb2a3116981827a3990f3446d3af')
 
     """
     appid, vercode, vername = binres.quick_get_idver(apkfile)
     fingerprint = get_signing_cert_fingerprint(apkfile)     # verify w/ apksigner first!
-    certs = get_signing_certs(apkfile)
-    for cert in certs:
-        if fingerprint == hashlib.sha256(cert).hexdigest():
-            sig = get_fdroid_sig(cert)
-            break
-    else:
+    extracted_v2_sig = apksigcopier.extract_v2_sig(apkfile)
+    assert extracted_v2_sig is not None
+    _, sig_block = extracted_v2_sig
+    certs = get_signing_certs(sig_block)
+    if fingerprint not in certs:
         raise SigError("SHA-256 fingerprint mismatch")
+    sig = get_fdroid_sig(certs[fingerprint])
     return Apk(filename=apkfile, appid=appid, version_code=vercode, version_name=vername,
-               signing_key_fingerprint=fingerprint, fdroid_sig=sig)
+               signing_key=fingerprint, fdroid_sig=sig)
 
 
 def get_signing_cert_fingerprint(apkfile: str) -> str:
@@ -159,22 +159,23 @@ def get_fdroid_sig(cert: bytes) -> str:
     return hashlib.md5(binascii.hexlify(cert)).hexdigest()
 
 
-def get_signing_certs(apkfile: str) -> Set[bytes]:
+def get_signing_certs(sig_block: bytes) -> Dict[str, bytes]:
     """
     Get APK signing key certificates by partially parsing the APK Signing Block.
 
     NB: this does not validate anything; use after get_signing_cert_fingerprint()!
     """
-    extracted_v2_sig = apksigcopier.extract_v2_sig(apkfile)
-    assert extracted_v2_sig is not None
-    _, sig_block = extracted_v2_sig
-    certs = set()
+    certs = {}
     for p in parse_apk_signing_block(sig_block):
         if isinstance(p.value, APKSignatureSchemeBlock):
-            certs.add(p.value.certificates[0])
+            cert = p.value.certificates[0]
+            fingerprint = hashlib.sha256(cert).hexdigest()
+            if fingerprint not in certs:
+                certs[fingerprint] = cert
     return certs
 
 
+# FIXME: also use to detect "unwanted" blocks
 def parse_apk_signing_block(data: bytes) -> Iterator[Pair]:
     """
     Partially parse APK Signing Block (a sequence of pairs).
