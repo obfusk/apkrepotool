@@ -1,0 +1,6 @@
+repo:
+  name: Mein Repository
+  description: >-
+    Dies ist ein Repository mit Android Apps zur Nutzung mit einem F-Droid
+    Client. Apps in diesem Repository sind offizielle Binaries, die von den
+    jeweiligen Entwicklern der App bereitgestellt werden.

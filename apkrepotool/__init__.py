@@ -100,6 +100,14 @@ class Config:
 
 # FIXME
 @dataclass(frozen=True)
+class LocalisedConfig:
+    """Localised config."""
+    repo_name: str
+    repo_description: str
+
+
+# FIXME
+@dataclass(frozen=True)
 class Metadata:
     """App metadata."""
     title: Optional[str]
@@ -116,8 +124,7 @@ def parse_recipe_yaml(recipe_file: str) -> App:
     r"""
     Parse recipe YAML.
 
-    >>> app = parse_recipe_yaml("test/metadata/android.appsecurity.cts.tinyapp.yml")
-    >>> app
+    >>> parse_recipe_yaml("test/metadata/android.appsecurity.cts.tinyapp.yml")
     App(name='TestApp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'])
 
     """
@@ -140,8 +147,7 @@ def parse_config_yaml(config_file: str) -> Config:
     r"""
     Parse config YAML.
 
-    >>> cfg = parse_config_yaml("test/config.yml")
-    >>> cfg
+    >>> parse_config_yaml("test/config.yml")
     Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.')
 
     """
@@ -153,6 +159,31 @@ def parse_config_yaml(config_file: str) -> Config:
 
 
 # FIXME
+def parse_localised_config_yaml(config_dir: Path) -> Dict[str, LocalisedConfig]:
+    r"""
+    Parse localised config YAML.
+
+    >>> for kv in parse_localised_config_yaml(Path("test/config")).items():
+    ...     kv
+    ('de', LocalisedConfig(repo_name='Mein Repository', repo_description='Dies ist ein Repository mit Android Apps zur Nutzung mit einem F-Droid Client. Apps in diesem Repository sind offizielle Binaries, die von den jeweiligen Entwicklern der App bereitgestellt werden.'))
+    ('en-US', LocalisedConfig(repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.'))
+
+    """
+    configs = {}
+    for locale_dir in sorted(config_dir.iterdir()):
+        if locale_dir.is_dir():
+            config_file = locale_dir / "config.yml"
+            with open(config_file, encoding="utf-8") as fh:
+                yaml = YAML(typ="safe")
+                data = yaml.load(fh)
+                configs[locale_dir.name] = LocalisedConfig(
+                    repo_name=data["repo"]["name"],
+                    repo_description=data["repo"]["description"])
+    return configs
+
+
+# FIXME
+# FIXME: metadata/<app>/<locale>/images/ vs repo/<app>/<locale>/ (& hashes)
 def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Metadata]:
     r"""
     Parse (fastlane) metadata.
@@ -203,8 +234,7 @@ def get_apk_info(apkfile: str) -> Apk:
     r"""
     Get APK info.
 
-    >>> apk = get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
-    >>> apk
+    >>> get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
     Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8', fdroid_sig='506ceb2a3116981827a3990f3446d3af')
 
     """
