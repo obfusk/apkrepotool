@@ -11,6 +11,7 @@ FIXME
 
 import binascii
 import hashlib
+import os
 import struct
 import subprocess
 import sys
@@ -227,12 +228,12 @@ def get_signing_cert_fingerprint(apkfile: str) -> str:
     prefix = "Signer #1 certificate SHA-256 digest: "
     hexdigit = "01234567890abcdef"
     try:
-        output = run_command("apksigner", "verify", "--print-certs", "--", apkfile)
+        out, err = run_command("apksigner", "verify", "--print-certs", "--", apkfile)
     except subprocess.CalledProcessError as e:
         raise SigError(f"Verification with apksigner failed: {e}") from e
     except FileNotFoundError as e:
         raise Error(f"Could not run apksigner: {e}") from e
-    for line in output.splitlines():
+    for line in out.splitlines():
         if line.startswith(prefix):
             fingerprint = line[len(prefix):]
             if len(fingerprint) == 64 and all(c in hexdigit for c in fingerprint):
@@ -348,14 +349,27 @@ def make_index_v2(apps: List[App], apks: List[Apk]) -> None:
     apps, apks
 
 
-def run_command(*args: str, verbose: bool = False) -> str:
+def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
+                merged: bool = False, verbose: bool = False) -> Tuple[str, str]:
     r"""
     Run command and capture stdout + stderr.
 
     >>> run_command("echo", "OK")
-    'OK\n'
+    ('OK\n', '')
     >>> run_command("bash", "-c", "echo OK >&2")
-    'OK\n'
+    ('', 'OK\n')
+    >>> run_command("bash", "-c", "echo OK >&2", merged=True)
+    ('OK\n', None)
+    >>> run_command("bash", "-c", "echo out; echo err >&2")
+    ('out\n', 'err\n')
+    >>> os.environ["_TEST"] = "foo"
+    >>> run_command("env", env=dict(TEST="bar"), keepenv=False)
+    ('TEST=bar\n', '')
+    >>> lines = run_command("env", env=dict(TEST="bar"))[0].splitlines()
+    >>> "TEST=bar" in lines
+    True
+    >>> "_TEST=foo" in lines
+    True
     >>> try:
     ...     run_command("false")
     ... except subprocess.CalledProcessError as e:
@@ -365,8 +379,14 @@ def run_command(*args: str, verbose: bool = False) -> str:
     """
     if verbose:
         print(f"Running {' '.join(args)!r}...", file=sys.stderr)
-    return subprocess.run(args, check=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT).stdout.decode()
+    stderr = subprocess.STDOUT if merged else subprocess.PIPE
+    kwargs: Dict[str, Any] = {}
+    if env is not None:
+        kwargs["env"] = {**os.environ, **env} if keepenv else env
+    cmd = subprocess.run(args, check=True, stdout=subprocess.PIPE, stderr=stderr, **kwargs)
+    out = cmd.stdout.decode()
+    err = cmd.stderr.decode() if not merged else None
+    return out, err
 
 
 # FIXME
