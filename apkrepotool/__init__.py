@@ -28,6 +28,8 @@ from ruamel.yaml import YAML
 __version__ = "0.0.0"
 NAME = "apkrepotool"
 
+CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
+
 APK_SIGNATURE_SCHEME_V2_BLOCK_ID = 0x7109871a
 APK_SIGNATURE_SCHEME_V3_BLOCK_ID = 0xf05368c0
 APK_SIGNATURE_SCHEME_V31_BLOCK_ID = 0x1b93ad61
@@ -228,7 +230,8 @@ def get_signing_cert_fingerprint(apkfile: str) -> str:
     prefix = "Signer #1 certificate SHA-256 digest: "
     hexdigit = "01234567890abcdef"
     try:
-        out, err = run_command("apksigner", "verify", "--print-certs", "--", apkfile)
+        out, err = run_command("apksigner", "verify", "--print-certs", "--",
+                               apkfile, env=CLEAN_LANG_ENV)
     except subprocess.CalledProcessError as e:
         raise SigError(f"Verification with apksigner failed: {e}") from e
     except FileNotFoundError as e:
