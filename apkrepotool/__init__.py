@@ -33,8 +33,6 @@ CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
 
 APKSIGNER_JAR = "/usr/share/java/apksigner.jar"
 CERT_JAVA_CODE = r"""
-package dev.obfusk.apksig;
-
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
