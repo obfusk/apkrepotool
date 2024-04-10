@@ -32,7 +32,7 @@ NAME = "apkrepotool"
 CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
 
 APKSIGNER_JAR = "/usr/share/java/apksigner.jar"
-CERT_JAVA_CODE = """
+CERT_JAVA_CODE = r"""
 package dev.obfusk.apksig;
 
 import java.io.File;
@@ -50,6 +50,7 @@ public class Cert {
       ApkVerifier.Result result = builder.build().verify();
       if (result.isVerified()) {
         byte[] cert = result.getSignerCertificates().get(0).getEncoded();
+        System.out.write("__VERIFIED__\n".getBytes("UTF-8"));
         System.out.write(cert);
       } else {
         System.exit(1);
@@ -287,8 +288,11 @@ def get_signing_cert(apkfile: str) -> bytes:
         with open(cert_java, "w", encoding="utf-8") as fh:
             fh.write(CERT_JAVA_CODE)
         try:
-            return subprocess.run(args, check=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE).stdout
+            out = subprocess.run(args, check=True, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE).stdout
+            if not out.startswith(b"__VERIFIED__\n"):
+                raise SigError("Verification failed")
+            return out[13:]
         except subprocess.CalledProcessError as e:
             raise SigError(f"Verification with apksigner failed: {e}") from e
         except FileNotFoundError as e:
