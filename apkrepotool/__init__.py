@@ -303,15 +303,16 @@ def get_signing_cert(apkfile: str) -> Tuple[bytes, Dict[str, bool]]:
     {'v1': True, 'v2': True, 'v3': True}
 
     """
+    java, javac = get_java()
     apksigner_jar = get_apksigner_jar()
-    cert_java = get_cert_java(apksigner_jar)
+    cert_java = get_cert_java(apksigner_jar, javac)
     if cert_java.suffix == ".java":
         cert_arg = str(cert_java)
         classpath = apksigner_jar
     else:
         cert_arg = cert_java.stem
         classpath = f"{cert_java.parent}:{apksigner_jar}"
-    args = ("java", "-classpath", classpath, cert_arg, apkfile)
+    args = (java, "-classpath", classpath, cert_arg, apkfile)
     try:
         out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
     except subprocess.CalledProcessError as e:
@@ -329,7 +330,7 @@ def get_signing_cert(apkfile: str) -> Tuple[bytes, Dict[str, bool]]:
 
 
 # FIXME
-def get_cert_java(apksigner_jar: str) -> Path:
+def get_cert_java(apksigner_jar: str, javac: Optional[str]) -> Path:
     r"""
     Get path to Cert.java or Cert.class.
 
@@ -338,7 +339,7 @@ def get_cert_java(apksigner_jar: str) -> Path:
 
     >>> str(APKREPOTOOL_DIR)
     '.tmp'
-    >>> str(get_cert_java(get_apksigner_jar()))
+    >>> str(get_cert_java(get_apksigner_jar(), get_java()[1]))
     '.tmp/Cert.class'
 
     """
@@ -351,8 +352,8 @@ def get_cert_java(apksigner_jar: str) -> Path:
         APKREPOTOOL_DIR.mkdir(mode=0o700, exist_ok=True)
         with cert_java.open("w", encoding="utf-8") as fh:
             fh.write(CERT_JAVA_CODE)
-    if shutil.which("javac") and not javac_failed.exists():
-        args = ("javac", "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
+    if javac and not javac_failed.exists():
+        args = (javac, "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
         subprocess.run(args, check=False)
         if cert_class.exists():
             return cert_class
@@ -387,6 +388,30 @@ def get_apksigner_jar() -> str:
                     if os.path.exists(jar):
                         return jar
     raise Error("Could not locate apksigner JAR")
+
+
+def get_java() -> Tuple[str, Optional[str]]:
+    r"""
+    Find java (and possibly javac) using $JAVA_HOME/$PATH.
+
+    >>> get_java()
+    ('/usr/bin/java', '/usr/bin/javac')
+    >>> os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-11-openjdk-amd64"
+    >>> get_java()
+    ('/usr/lib/jvm/java-11-openjdk-amd64/bin/java', '/usr/lib/jvm/java-11-openjdk-amd64/bin/javac')
+    >>> del os.environ["JAVA_HOME"]
+
+    """
+    java = javac = None
+    if home := os.environ.get("JAVA_HOME"):
+        java = os.path.join(home, "bin/java")
+        javac = os.path.join(home, "bin/javac")
+    if not (java and os.path.exists(java)):
+        java = shutil.which("java")
+        javac = shutil.which("javac")
+        if not (java and os.path.exists(java)):
+            raise Error("Could not locate java")
+    return java, (javac if javac and os.path.exists(javac) else None)
 
 
 def _vsn(v: str) -> Tuple[int, ...]:
