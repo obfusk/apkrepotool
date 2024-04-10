@@ -13,9 +13,9 @@ import binascii
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
-import tempfile
 import time
 
 from dataclasses import dataclass
@@ -29,7 +29,15 @@ from ruamel.yaml import YAML
 __version__ = "0.0.0"
 NAME = "apkrepotool"
 
+if os.environ.get("APKREPOTOOL_DIR"):
+    APKREPOTOOL_DIR = Path(os.environ["APKREPOTOOL_DIR"])
+else:
+    APKREPOTOOL_DIR = Path.home() / ".apkrepotool"
+
 CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
+
+SDK_ENV = ("ANDROID_HOME", "ANDROID_SDK", "ANDROID_SDK_ROOT")
+SDK_JAR = "lib/apksigner.jar"
 
 APKSIGNER_JAR = "/usr/share/java/apksigner.jar"
 CERT_JAVA_CODE = r"""
@@ -38,6 +46,7 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateEncodingException;
 
+import com.android.apksig.ApkVerificationIssue;
 import com.android.apksig.ApkVerifier;
 import com.android.apksig.apk.ApkFormatException;
 
@@ -48,9 +57,16 @@ public class Cert {
       ApkVerifier.Result result = builder.build().verify();
       if (result.isVerified()) {
         byte[] cert = result.getSignerCertificates().get(0).getEncoded();
-        System.out.write("__VERIFIED__\n".getBytes("UTF-8"));
+        String versions = String.join(",",
+          "v1=" + (result.isVerifiedUsingV1Scheme() ? "true" : "false"),
+          "v2=" + (result.isVerifiedUsingV2Scheme() ? "true" : "false"),
+          "v3=" + (result.isVerifiedUsingV3Scheme() ? "true" : "false"));
+        System.out.write(("verified\n" + versions + "\n" + cert.length + "\n").getBytes("UTF-8"));
         System.out.write(cert);
       } else {
+        for (ApkVerificationIssue error : result.getErrors()) {
+          System.err.println("ERROR: " + error);
+        }
         System.exit(1);
       }
     } catch (IOException | NoSuchAlgorithmException | CertificateEncodingException | ApkFormatException e) {
@@ -58,7 +74,7 @@ public class Cert {
     }
   }
 }
-"""
+"""[1:]
 
 
 class Error(Exception):
@@ -252,7 +268,7 @@ def get_apk_info(apkfile: str) -> Apk:
     size = Path(apkfile).stat().st_size
     sha256 = get_sha256(apkfile)
     appid, vercode, vername = binres.quick_get_idver(apkfile)
-    cert = get_signing_cert(apkfile)
+    cert, _ = get_signing_cert(apkfile)
     fingerprint = hashlib.sha256(cert).hexdigest()
     sig = hashlib.md5(binascii.hexlify(cert)).hexdigest()
     return Apk(filename=apkfile, size=size, sha256=sha256, appid=appid, version_code=vercode,
@@ -274,27 +290,121 @@ def get_sha256(file: str) -> str:
     return sha.hexdigest()
 
 
-def get_signing_cert(apkfile: str) -> bytes:
-    """
+def get_signing_cert(apkfile: str) -> Tuple[bytes, Dict[str, bool]]:
+    r"""
     Get APK signing key certificate using apksigner JAR.
 
     NB: this validates the signature(s)!
+
+    >>> cert, vsns = get_signing_cert("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> len(cert)
+    765
+    >>> vsns
+    {'v1': True, 'v2': True, 'v3': True}
+
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cert_java = os.path.join(tmpdir, "Cert.java")
-        args = ("java", "-classpath", APKSIGNER_JAR, cert_java, apkfile)
-        with open(cert_java, "w", encoding="utf-8") as fh:
+    apksigner_jar = get_apksigner_jar()
+    cert_java = get_cert_java(apksigner_jar)
+    if cert_java.suffix == ".java":
+        cert_arg = str(cert_java)
+        classpath = apksigner_jar
+    else:
+        cert_arg = cert_java.stem
+        classpath = f"{cert_java.parent}:{apksigner_jar}"
+    args = ("java", "-classpath", classpath, cert_arg, apkfile)
+    try:
+        out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
+    except subprocess.CalledProcessError as e:
+        raise SigError(f"Verification with apksigner failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run apksigner: {e}") from e
+    try:
+        verified, versions, size, cert = out.split(b"\n", 3)
+    except ValueError:
+        raise SigError("Verification output mismatch")      # pylint: disable=W0707
+    if verified != b"verified" or int(size) != len(cert):
+        raise SigError("Verification output mismatch")
+    vsns = {k: v == "true" for kv in versions.decode().split(",") for k, v in [kv.split("=")]}
+    return cert, vsns
+
+
+# FIXME
+def get_cert_java(apksigner_jar: str) -> Path:
+    r"""
+    Get path to Cert.java or Cert.class.
+
+    Cert.java is saved in $APKREPOTOOL_DIR (~/.apkrepotool) and compiled to
+    Cert.class with javac if available.
+
+    >>> str(APKREPOTOOL_DIR)
+    '.tmp'
+    >>> str(get_cert_java(get_apksigner_jar()))
+    '.tmp/Cert.class'
+
+    """
+    cert_java = APKREPOTOOL_DIR / "Cert.java"
+    cert_class = cert_java.with_suffix(".class")
+    javac_failed = cert_class.with_suffix(".javac_failed")
+    if cert_class.exists():
+        return cert_class
+    if not cert_java.exists():
+        APKREPOTOOL_DIR.mkdir(mode=0o700, exist_ok=True)
+        with cert_java.open("w", encoding="utf-8") as fh:
             fh.write(CERT_JAVA_CODE)
-        try:
-            out = subprocess.run(args, check=True, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE).stdout
-            if not out.startswith(b"__VERIFIED__\n"):
-                raise SigError("Verification failed")
-            return out[13:]
-        except subprocess.CalledProcessError as e:
-            raise SigError(f"Verification with apksigner failed: {e}") from e
-        except FileNotFoundError as e:
-            raise Error(f"Could not run apksigner: {e}") from e
+    if shutil.which("javac") and not javac_failed.exists():
+        args = ("javac", "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
+        subprocess.run(args, check=False)
+        if cert_class.exists():
+            return cert_class
+        javac_failed.touch()
+    return cert_java
+
+
+def get_apksigner_jar() -> str:
+    r"""
+    Find apksigner JAR using $ANDROID_HOME etc.
+
+    >>> get_apksigner_jar()
+    '/usr/share/java/apksigner.jar'
+    >>> os.environ["ANDROID_HOME"] = "test/fake-sdk"
+    >>> os.environ["APKSIGNER_JAR"] = "/nonexistent"
+    >>> get_apksigner_jar()
+    'test/fake-sdk/build-tools/35.0.0-rc1/lib/apksigner.jar'
+    >>> os.environ["APKSIGNER_JAR"] = "test/fake-sdk/build-tools/31.0.0/lib/apksigner.jar"
+    >>> get_apksigner_jar()
+    'test/fake-sdk/build-tools/31.0.0/lib/apksigner.jar'
+    >>> del os.environ["ANDROID_HOME"], os.environ["APKSIGNER_JAR"]
+
+    """
+    if (jar := os.environ.get("APKSIGNER_JAR") or APKSIGNER_JAR) and os.path.exists(jar):
+        return jar
+    for k in SDK_ENV:
+        if home := os.environ.get(k):
+            tools = os.path.join(home, "build-tools")
+            if os.path.exists(tools):
+                for vsn in sorted(os.listdir(tools), key=_vsn, reverse=True):
+                    jar = os.path.join(tools, vsn, *SDK_JAR.split("/"))
+                    if os.path.exists(jar):
+                        return jar
+    raise Error("Could not locate apksigner JAR")
+
+
+def _vsn(v: str) -> Tuple[int, ...]:
+    r"""
+    >>> vs = "31.0.0 32.1.0-rc1 34.0.0-rc3 34.0.0 35.0.0-rc1".split()
+    >>> for v in sorted(vs, key=_vsn, reverse=True):
+    ...     (_vsn(v), v)
+    ((35, 0, 0, 0, 1), '35.0.0-rc1')
+    ((34, 0, 0, 1, 0), '34.0.0')
+    ((34, 0, 0, 0, 3), '34.0.0-rc3')
+    ((32, 1, 0, 0, 1), '32.1.0-rc1')
+    ((31, 0, 0, 1, 0), '31.0.0')
+    """
+    if "-rc" in v:
+        v = v.replace("-rc", ".0.", 1)
+    else:
+        v = v + ".1.0"
+    return tuple(int(x) if x.isdigit() else -1 for x in v.split("."))
 
 
 # FIXME
@@ -304,10 +414,10 @@ def make_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, 
     ts = int(time.time())
     v1_data = v1_index(apps, apks, meta, ts, cfg)
     v2_data = v2_index(apps, apks, meta, ts, cfg, localised_cfgs)
-    with (repo_dir / "index-v1.json").open("w") as fh:
+    with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
         json.dump(v1_data, fh, indent=2)
         fh.write("\n")
-    with (repo_dir / "index-v2.json").open("w") as fh:
+    with (repo_dir / "index-v2.json").open("w", encoding="utf-8") as fh:
         json.dump(v2_data, fh, indent=2)
         fh.write("\n")
 

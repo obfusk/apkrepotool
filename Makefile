@@ -17,7 +17,7 @@ test-cli:
 	apkrepotool --version
 
 doctest:
-	$(PYTHON) -m doctest apkrepotool/*.py
+	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py
 
 lint:
 	flake8 apkrepotool/*.py
@@ -32,7 +32,7 @@ clean: cleanup
 cleanup:
 	find -name '*~' -delete -print
 	rm -fr apkrepotool/__pycache__/ .mypy_cache/
-	rm -fr build/ dist/
+	rm -fr build/ dist/ .tmp/
 
 .PHONY: _package _publish
 
