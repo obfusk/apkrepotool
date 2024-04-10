@@ -13,16 +13,15 @@ import binascii
 import hashlib
 import json
 import os
-import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import apksigcopier
 import repro_apk.binres as binres       # FIXME: needs proper release & dependency
 
 from ruamel.yaml import YAML
@@ -32,10 +31,35 @@ NAME = "apkrepotool"
 
 CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
 
-APK_SIGNATURE_SCHEME_V2_BLOCK_ID = 0x7109871a
-APK_SIGNATURE_SCHEME_V3_BLOCK_ID = 0xf05368c0
-APK_SIGNATURE_SCHEME_V31_BLOCK_ID = 0x1b93ad61
-VERITY_PADDING_BLOCK_ID = 0x42726577
+APKSIGNER_JAR = "/usr/share/java/apksigner.jar"
+CERT_JAVA_CODE = """
+package dev.obfusk.apksig;
+
+import java.io.File;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateEncodingException;
+
+import com.android.apksig.ApkVerifier;
+import com.android.apksig.apk.ApkFormatException;
+
+public class Cert {
+  public static void main(String[] args) {
+    try {
+      ApkVerifier.Builder builder = new ApkVerifier.Builder(new File(args[0]));
+      ApkVerifier.Result result = builder.build().verify();
+      if (result.isVerified()) {
+        byte[] cert = result.getSignerCertificates().get(0).getEncoded();
+        System.out.write(cert);
+      } else {
+        System.exit(1);
+      }
+    } catch (IOException | NoSuchAlgorithmException | CertificateEncodingException | ApkFormatException e) {
+      System.exit(1);
+    }
+  }
+}
+"""
 
 
 class Error(Exception):
@@ -44,26 +68,6 @@ class Error(Exception):
 
 class SigError(Error):
     """Signature (verification) error."""
-
-
-@dataclass(frozen=True)
-class Block:
-    """Block from APK Signing Block."""
-    data: bytes
-
-
-@dataclass(frozen=True)
-class APKSignatureSchemeBlock(Block):
-    """APK Signature Scheme v2/v3 Block."""
-    version: int
-    certificates: List[bytes]
-
-
-@dataclass(frozen=True)
-class Pair:
-    """Pair from APK Signing Block."""
-    id: int
-    value: Block
 
 
 # FIXME
@@ -249,14 +253,9 @@ def get_apk_info(apkfile: str) -> Apk:
     size = Path(apkfile).stat().st_size
     sha256 = get_sha256(apkfile)
     appid, vercode, vername = binres.quick_get_idver(apkfile)
-    fingerprint = get_signing_cert_fingerprint(apkfile)     # verify w/ apksigner first!
-    extracted_v2_sig = apksigcopier.extract_v2_sig(apkfile)
-    assert extracted_v2_sig is not None
-    _, sig_block = extracted_v2_sig
-    certs = get_signing_certs(sig_block)
-    if fingerprint not in certs:
-        raise SigError("SHA-256 fingerprint mismatch")
-    sig = get_fdroid_sig(certs[fingerprint])
+    cert = get_signing_cert(apkfile)
+    fingerprint = hashlib.sha256(cert).hexdigest()
+    sig = hashlib.md5(binascii.hexlify(cert)).hexdigest()
     return Apk(filename=apkfile, size=size, sha256=sha256, appid=appid, version_code=vercode,
                version_name=vername, signing_key=fingerprint, fdroid_sig=sig)
 
@@ -276,123 +275,24 @@ def get_sha256(file: str) -> str:
     return sha.hexdigest()
 
 
-def get_signing_cert_fingerprint(apkfile: str) -> str:
+def get_signing_cert(apkfile: str) -> bytes:
     """
-    Get APK signing key certificate SHA-256 fingerprint using apksigner.
+    Get APK signing key certificate using apksigner JAR.
 
     NB: this validates the signature(s)!
     """
-    prefix = "Signer #1 certificate SHA-256 digest: "
-    hexdigit = "01234567890abcdef"
-    try:
-        out, err = run_command("apksigner", "verify", "--print-certs", "--",
-                               apkfile, env=CLEAN_LANG_ENV)
-    except subprocess.CalledProcessError as e:
-        raise SigError(f"Verification with apksigner failed: {e}") from e
-    except FileNotFoundError as e:
-        raise Error(f"Could not run apksigner: {e}") from e
-    for line in out.splitlines():
-        if line.startswith(prefix):
-            fingerprint = line[len(prefix):]
-            if len(fingerprint) == 64 and all(c in hexdigit for c in fingerprint):
-                return fingerprint
-            raise SigError(f"Malformed fingerprint: {fingerprint!r}")
-    raise SigError("No signer found")
-
-
-def get_fdroid_sig(cert: bytes) -> str:
-    """
-    Get F-Droid APK sig (MD5 of hexdump of certificate).
-
-    NB: this does not validate anything; use after get_signing_cert_fingerprint()!
-    """
-    return hashlib.md5(binascii.hexlify(cert)).hexdigest()
-
-
-def get_signing_certs(sig_block: bytes) -> Dict[str, bytes]:
-    """
-    Get APK signing key certificates by partially parsing the APK Signing Block.
-
-    NB: this does not validate anything; use after get_signing_cert_fingerprint()!
-    """
-    certs = {}
-    for p in parse_apk_signing_block(sig_block):
-        if isinstance(p.value, APKSignatureSchemeBlock):
-            cert = p.value.certificates[0]
-            fingerprint = hashlib.sha256(cert).hexdigest()
-            if fingerprint not in certs:
-                certs[fingerprint] = cert
-    return certs
-
-
-# FIXME: also use to detect "unwanted" blocks
-def parse_apk_signing_block(data: bytes) -> Iterator[Pair]:
-    """
-    Partially parse APK Signing Block (a sequence of pairs).
-
-    NB: this is not a full parser!  Just enough to get the certificates.
-    """
-    magic = data[-16:]
-    sb_size1 = int.from_bytes(data[:8], "little")
-    sb_size2 = int.from_bytes(data[-24:-16], "little")
-    if magic != b"APK Sig Block 42":
-        raise SigError("APK Sig Block magic mismatch")
-    if not (sb_size1 == sb_size2 == len(data) - 8):
-        raise SigError("APK Sig Block size mismatch")
-    data = data[8:-24]
-    while data:
-        value: Block
-        pair_len, pair_id = struct.unpack("<QL", data[:12])
-        pair_val, data = data[12:8 + pair_len], data[8 + pair_len:]
-        if pair_id == APK_SIGNATURE_SCHEME_V2_BLOCK_ID:
-            value = parse_apk_signature_scheme_block(pair_val, 2)
-        elif pair_id == APK_SIGNATURE_SCHEME_V3_BLOCK_ID:
-            value = parse_apk_signature_scheme_block(pair_val, 3)
-        elif pair_id == APK_SIGNATURE_SCHEME_V31_BLOCK_ID:
-            value = parse_apk_signature_scheme_block(pair_val, 31)
-        elif pair_id == VERITY_PADDING_BLOCK_ID:
-            if not all(b == 0 for b in pair_val):
-                raise SigError("Verity zero padding mismatch")
-            value = Block(pair_val)
-        else:
-            value = Block(pair_val)
-        yield Pair(pair_id, value)
-
-
-def parse_apk_signature_scheme_block(data: bytes, version: int) -> APKSignatureSchemeBlock:
-    """
-    Partially parse APK Signature Scheme v2/v3 Block.
-
-    NB: this is not a full parser!  Just enough to get the certificates.
-    """
-    certificates = []
-    seq_len, data = int.from_bytes(data[:4], "little"), data[4:]
-    if seq_len != len(data):
-        raise SigError("APK Signature Scheme Block size mismatch")
-    while data:
-        d_signer, data = _split_len_prefixed_field(data)
-        signed_data, _ = _split_len_prefixed_field(d_signer)
-        d_digests, signed_data = _split_len_prefixed_field(signed_data)
-        d_certs, _ = _split_len_prefixed_field(signed_data)
-        while d_certs:
-            cert, d_certs = _split_len_prefixed_field(d_certs)
-            certificates.append(cert)
-    return APKSignatureSchemeBlock(data, version, certificates)
-
-
-def _split_len_prefixed_field(data: bytes) -> Tuple[bytes, bytes]:
-    """
-    Parse length-prefixed field (length is little-endian, uint32) at beginning
-    of data.
-
-    Returns (field data, remaining data).
-    """
-    if len(data) < 4:
-        raise SigError("Prefixed field must be at least 4 bytes")
-    field_len = int.from_bytes(data[:4], "little")
-    if len(data) < 4 + field_len:
-        raise SigError("Prefixed field size mismatch")
-    return data[4:4 + field_len], data[4 + field_len:]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cert_java = os.path.join(tmpdir, "Cert.java")
+        args = ("java", "-classpath", APKSIGNER_JAR, cert_java, apkfile)
+        with open(cert_java, "w", encoding="utf-8") as fh:
+            fh.write(CERT_JAVA_CODE)
+        try:
+            return subprocess.run(args, check=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE).stdout
+        except subprocess.CalledProcessError as e:
+            raise SigError(f"Verification with apksigner failed: {e}") from e
+        except FileNotFoundError as e:
+            raise Error(f"Could not run apksigner: {e}") from e
 
 
 # FIXME
