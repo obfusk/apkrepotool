@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -95,6 +96,31 @@ class App:
     current_version: Optional[int]
 
 
+@dataclass(frozen=True)
+class Feature:
+    """AndroidManifest.xml uses-feature."""
+    name: str
+
+
+@dataclass(frozen=True)
+class Permission:
+    """AndroidManifest.xml uses-permission."""
+    name: str
+    maxSdkVersion: Optional[int]
+
+
+@dataclass(frozen=True)
+class Manifest:
+    """AndroidManifest.xml data."""
+    appid: str
+    version_code: int
+    version_name: str
+    min_sdk: int
+    target_sdk: int
+    features: List[Feature]
+    permissions: List[Permission]
+
+
 # FIXME
 @dataclass(frozen=True)
 class Apk:
@@ -102,11 +128,9 @@ class Apk:
     filename: str
     size: int
     sha256: str
-    appid: str
-    version_code: int
-    version_name: str
     signing_key: str
     fdroid_sig: str
+    manifest: Manifest
 
 
 # FIXME
@@ -261,18 +285,80 @@ def get_apk_info(apkfile: str) -> Apk:
     r"""
     Get APK info.
 
-    >>> get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
-    Apk(filename='test/repo/golden-aligned-v1v2v3-out.apk', size=12865, sha256='ba7828ba42a3b68bd3acff78773e41d6a62aabe6317538671441c568748d9cd7', appid='android.appsecurity.cts.tinyapp', version_code=10, version_name='1.0', signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8', fdroid_sig='506ceb2a3116981827a3990f3446d3af')
+    >>> import dataclasses
+    >>> apk = get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> for field in dataclasses.fields(apk):
+    ...     if field.name != "manifest":
+    ...         print(f"{field.name}={getattr(apk, field.name)!r}")
+    filename='test/repo/golden-aligned-v1v2v3-out.apk'
+    size=12865
+    sha256='ba7828ba42a3b68bd3acff78773e41d6a62aabe6317538671441c568748d9cd7'
+    signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'
+    fdroid_sig='506ceb2a3116981827a3990f3446d3af'
 
     """
     size = Path(apkfile).stat().st_size
-    sha256 = get_sha256(apkfile)
-    appid, vercode, vername = binres.quick_get_idver(apkfile)
     cert, _ = get_signing_cert(apkfile)
     fingerprint = hashlib.sha256(cert).hexdigest()
     sig = hashlib.md5(binascii.hexlify(cert)).hexdigest()
-    return Apk(filename=apkfile, size=size, sha256=sha256, appid=appid, version_code=vercode,
-               version_name=vername, signing_key=fingerprint, fdroid_sig=sig)
+    return Apk(filename=apkfile, size=size, sha256=get_sha256(apkfile), signing_key=fingerprint,
+               fdroid_sig=sig, manifest=get_manifest(apkfile))
+
+
+# FIXME
+def get_manifest(apkfile: str) -> Manifest:
+    r"""
+    Parse AndroidManifest.xml.
+
+    >>> import dataclasses
+    >>> manifest = get_manifest("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> for field in dataclasses.fields(manifest):
+    ...     print(f"{field.name}={getattr(manifest, field.name)!r}")
+    appid='android.appsecurity.cts.tinyapp'
+    version_code=10
+    version_name='1.0'
+    min_sdk=23
+    target_sdk=23
+    features=[]
+    permissions=[]
+
+    """
+    def get(elem: ET.Element, attr: str, android: bool = True) -> Optional[str]:
+        if android:
+            attr = "{" + binres.SCHEMA_ANDROID + "}" + attr
+        return elem.get(attr)
+
+    def get_str(elem: ET.Element, attr: str, android: bool = True) -> str:
+        value = get(elem, attr, android=android)
+        if not isinstance(value, str):
+            raise TypeError("AndroidManifest.xml element type mismatch")
+        return value
+
+    chunk = binres.read_chunk(binres.quick_load(apkfile, binres.MANIFEST))[0]
+    if not isinstance(chunk, binres.XMLChunk):
+        raise Error("Expected XMLChunk")
+    root = binres.xmlchunk_to_etree(chunk).getroot()
+    uses_sdk = root.find("uses-sdk")
+    if uses_sdk is None:
+        raise TypeError("AndroidManifest.xml missing uses-sdk")
+    features = []
+    for elem in root.iterfind("uses-feature"):
+        if get_str(elem, "required") == "true":
+            features.append(Feature(get_str(elem, "name")))
+    permissions = []
+    for elem in root.iterfind("uses-permission"):
+        maxSdk = get(elem, "maxSdkVersion")
+        permissions.append(Permission(
+            name=get_str(elem, "name"),
+            maxSdkVersion=int(maxSdk) if maxSdk is not None else None))
+    return Manifest(
+        appid=get_str(root, "package", android=False),
+        version_code=int(get_str(root, "versionCode")),
+        version_name=get_str(root, "versionName"),
+        min_sdk=int(get_str(uses_sdk, "minSdkVersion")),
+        target_sdk=int(get_str(uses_sdk, "targetSdkVersion")),
+        features=sorted(features, key=lambda f: f.name),
+        permissions=sorted(permissions, key=lambda f: f.name))
 
 
 def get_sha256(file: str) -> str:
@@ -520,14 +606,14 @@ def v1_packages(apks: Dict[str, Apk]) -> Any:
             "hash": apk.sha256,
             "hashType": "sha256",
             "minSdkVersion": 1,                     # FIXME
-            "packageName": apk.appid,
+            "packageName": apk.manifest.appid,
             "sig": apk.fdroid_sig,
             "signer": apk.signing_key,
             "size": apk.size,
             "targetSdkVersion": 1,                  # FIXME
             "uses-permission": [],                  # FIXME
-            "versionCode": apk.version_code,
-            "versionName": apk.version_name,
+            "versionCode": apk.manifest.version_code,
+            "versionName": apk.manifest.version_name,
         })
     return data
 
