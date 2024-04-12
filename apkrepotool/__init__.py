@@ -694,7 +694,7 @@ def do_update(verbose: bool = False) -> None:
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
     apks: Dict[str, Dict[int, Apk]] = {}
-    apps, meta = [], {}
+    apps, meta, aask = [], {}, {}
     recipes = sorted(meta_dir.glob("*.yml"))
     appids = set(recipe.stem for recipe in recipes)
     for apkfile in sorted(repo_dir.glob("*.apk")):
@@ -721,7 +721,15 @@ def do_update(verbose: bool = False) -> None:
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
             meta[appid] = parse_app_metadata(app_dir, version_codes)
+        if not app.allowed_apk_signing_keys:
+            print(f"Warning: no allowed signing keys specified for {appid}", file=sys.stderr)
+        aask[appid] = app.allowed_apk_signing_keys
         apps.append(app)
+    for appid, versions in apks.items():
+        for apk in versions.values():
+            if signers := aask[apk.manifest.appid]:
+                if apk.signing_key not in signers:
+                    raise Error(f"Unallowed signer for {apk.manifest.appid}: {apk.signing_key}")
     make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs)
 
 
