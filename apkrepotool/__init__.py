@@ -525,6 +525,7 @@ def _vsn(v: str) -> Tuple[int, ...]:
 
 
 # FIXME
+# FIXME: entry.json, signed .jar, diff/*.json
 def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
                localised_cfgs: Dict[str, LocalisedConfig]) -> None:
