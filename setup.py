@@ -42,7 +42,8 @@ setuptools.setup(
     keywords="android apk repo",
     entry_points=dict(console_scripts=["apkrepotool = apkrepotool:main"]),
     packages=["apkrepotool"],
-    package_data=dict(repro_apk=["py.typed"]),
+    package_data=dict(apkrepotool=["py.typed"]),
     python_requires=">=3.8",
-    install_requires=["click>=6.0", "ruamel.yaml"],
+    # FIXME: repro-apk >= <to be released version w/ binres>
+    install_requires=["click>=6.0", "repro-apk", "ruamel.yaml"],
 )
