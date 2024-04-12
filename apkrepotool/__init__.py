@@ -122,7 +122,6 @@ class Manifest:
     permissions: List[Permission]
 
 
-# FIXME
 @dataclass(frozen=True)
 class Apk:
     """APK."""
@@ -170,16 +169,16 @@ class Metadata:
 
 
 # FIXME
-def parse_recipe_yaml(recipe_file: str) -> App:
+def parse_recipe_yaml(recipe_file: Path, latest_version: Optional[int] = None) -> App:
     r"""
     Parse recipe YAML.
 
-    >>> parse_recipe_yaml("test/metadata/android.appsecurity.cts.tinyapp.yml")
+    >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"))
     App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], current_version=None)
 
     """
-    appid = PurePath(recipe_file).stem
-    with open(recipe_file, encoding="utf-8") as fh:
+    appid = recipe_file.stem
+    with recipe_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
         name = data["Name"]
@@ -190,20 +189,21 @@ def parse_recipe_yaml(recipe_file: str) -> App:
                 allowed_apk_signing_keys = data["AllowedAPKSigningKeys"]
         else:
             allowed_apk_signing_keys = []
+        cv = data["CurrentVersionCode"] if "CurrentVersionCode" in data else latest_version
         return App(name=name, appid=appid, allowed_apk_signing_keys=allowed_apk_signing_keys,
-                   current_version=None)
+                   current_version=cv)
 
 
 # FIXME
-def parse_config_yaml(config_file: str) -> Config:
+def parse_config_yaml(config_file: Path) -> Config:
     r"""
     Parse config YAML.
 
-    >>> parse_config_yaml("test/config.yml")
+    >>> parse_config_yaml(Path("test/config.yml"))
     Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.')
 
     """
-    with open(config_file, encoding="utf-8") as fh:
+    with config_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
         return Config(repo_url=data["repo_url"], repo_name=data["repo_name"],
@@ -282,12 +282,12 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
 
 
 # FIXME
-def get_apk_info(apkfile: str) -> Apk:
+def get_apk_info(apkfile: Path) -> Apk:
     r"""
     Get APK info.
 
     >>> import dataclasses
-    >>> apk = get_apk_info("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> apk = get_apk_info(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
     >>> for field in dataclasses.fields(apk):
     ...     if field.name != "manifest":
     ...         print(f"{field.name}={getattr(apk, field.name)!r}")
@@ -298,21 +298,21 @@ def get_apk_info(apkfile: str) -> Apk:
     fdroid_sig='506ceb2a3116981827a3990f3446d3af'
 
     """
-    size = Path(apkfile).stat().st_size
+    size = apkfile.stat().st_size
     cert, _ = get_signing_cert(apkfile)
     fingerprint = hashlib.sha256(cert).hexdigest()
     sig = hashlib.md5(binascii.hexlify(cert)).hexdigest()
-    return Apk(filename=apkfile, size=size, sha256=get_sha256(apkfile), signing_key=fingerprint,
-               fdroid_sig=sig, manifest=get_manifest(apkfile))
+    return Apk(filename=str(apkfile), size=size, sha256=get_sha256(apkfile),
+               signing_key=fingerprint, fdroid_sig=sig, manifest=get_manifest(apkfile))
 
 
 # FIXME
-def get_manifest(apkfile: str) -> Manifest:
+def get_manifest(apkfile: Path) -> Manifest:
     r"""
     Parse AndroidManifest.xml.
 
     >>> import dataclasses
-    >>> manifest = get_manifest("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> manifest = get_manifest(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
     >>> for field in dataclasses.fields(manifest):
     ...     print(f"{field.name}={getattr(manifest, field.name)!r}")
     appid='android.appsecurity.cts.tinyapp'
@@ -335,7 +335,7 @@ def get_manifest(apkfile: str) -> Manifest:
             raise TypeError("AndroidManifest.xml element type mismatch")
         return value
 
-    chunk = binres.read_chunk(binres.quick_load(apkfile, binres.MANIFEST))[0]
+    chunk = binres.read_chunk(binres.quick_load(str(apkfile), binres.MANIFEST))[0]
     if not isinstance(chunk, binres.XMLChunk):
         raise Error("Expected XMLChunk")
     root = binres.xmlchunk_to_etree(chunk).getroot()
@@ -365,28 +365,28 @@ def get_manifest(apkfile: str) -> Manifest:
         permissions=sorted(permissions, key=lambda f: f.name))
 
 
-def get_sha256(file: str) -> str:
+def get_sha256(file: Path) -> str:
     r"""
     Get SHA-256 digest of file.
 
-    >>> get_sha256("LICENSE.AGPLv3")
+    >>> get_sha256(Path("LICENSE.AGPLv3"))
     '8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef'
 
     """
     sha = hashlib.sha256()
-    with open(file, "rb") as fh:
+    with file.open("rb") as fh:
         while data := fh.read(4096):
             sha.update(data)
     return sha.hexdigest()
 
 
-def get_signing_cert(apkfile: str) -> Tuple[bytes, Dict[str, bool]]:
+def get_signing_cert(apkfile: Path) -> Tuple[bytes, Dict[str, bool]]:
     r"""
     Get APK signing key certificate using apksigner JAR.
 
     NB: this validates the signature(s)!
 
-    >>> cert, vsns = get_signing_cert("test/repo/golden-aligned-v1v2v3-out.apk")
+    >>> cert, vsns = get_signing_cert(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
     >>> len(cert)
     765
     >>> vsns
@@ -402,7 +402,7 @@ def get_signing_cert(apkfile: str) -> Tuple[bytes, Dict[str, bool]]:
     else:
         cert_arg = cert_java.stem
         classpath = f"{cert_java.parent}:{apksigner_jar}"
-    args = (java, "-classpath", classpath, cert_arg, apkfile)
+    args = (java, "-classpath", classpath, cert_arg, str(apkfile))
     try:
         out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
     except subprocess.CalledProcessError as e:
@@ -523,10 +523,11 @@ def _vsn(v: str) -> Tuple[int, ...]:
 
 
 # FIXME
-def make_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, Metadata]],
-               repo_dir: Path, cfg: Config, localised_cfgs: Dict[str, LocalisedConfig]) -> None:
+def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
+               meta: Dict[str, Dict[str, Metadata]], cfg: Config,
+               localised_cfgs: Dict[str, LocalisedConfig]) -> None:
     """Create & write v1 & v2 index."""
-    ts = int(time.time())
+    ts = int(time.time()) * 1000
     v1_data = v1_index(apps, apks, meta, ts, cfg)
     v2_data = v2_index(apps, apks, meta, ts, cfg, localised_cfgs)
     with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
@@ -538,8 +539,8 @@ def make_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, 
 
 
 # FIXME
-def v1_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, Metadata]],
-             ts: int, cfg: Config) -> Any:
+def v1_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
+             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config) -> Any:
     """Create v1 index data."""
     return {
         "repo": {
@@ -560,11 +561,12 @@ def v1_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, Me
 def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> Any:
     """Create v1 index apps data."""
     data = []
-    for app in apps:
+    # index is historically sorted by name
+    for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
             "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
             "suggestedVersionName": None,           # FIXME
-            "suggestedVersionCode": str(1),         # FIXME
+            "suggestedVersionCode": str(app.current_version),
             "license": "Unknown",                   # FIXME
             "name": app.name,
             "added": 0,                             # FIXME
@@ -597,34 +599,40 @@ def v1_localised(app_meta: Dict[str, Metadata], current_version: Optional[int]) 
 
 
 # FIXME
-def v1_packages(apks: Dict[str, Apk]) -> Any:
+def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Any:
     """Create v1 index packages data."""
     data: Dict[str, Any] = {}
-    for appid, apk in apks.items():
-        if appid not in data:
-            data[appid] = []
-        data[appid].append({
-            "added": 0,                             # FIXME
-            "apkName": PurePath(apk.filename).name,
-            "features": [],                         # FIXME
-            "hash": apk.sha256,
-            "hashType": "sha256",
-            "minSdkVersion": 1,                     # FIXME
-            "packageName": apk.manifest.appid,
-            "sig": apk.fdroid_sig,
-            "signer": apk.signing_key,
-            "size": apk.size,
-            "targetSdkVersion": 1,                  # FIXME
-            "uses-permission": [],                  # FIXME
-            "versionCode": apk.manifest.version_code,
-            "versionName": apk.manifest.version_name,
-        })
+    for appid, versions in sorted(apks.items(), key=lambda kv: kv[0]):
+        for apk in versions.values():
+            man = apk.manifest
+            if appid not in data:
+                data[appid] = []
+            entry = {
+                "added": 0,                             # FIXME
+                "apkName": PurePath(apk.filename).name,
+                "features": [f.name for f in man.features] or None,
+                "hash": apk.sha256,
+                "hashType": "sha256",
+                "minSdkVersion": man.min_sdk,
+                "packageName": man.appid,
+                "sig": apk.fdroid_sig,
+                "signer": apk.signing_key,
+                "size": apk.size,
+                "targetSdkVersion": man.target_sdk,
+                "uses-permission": [
+                    [p.name, p.maxSdkVersion] for p in man.permissions
+                ] or None,
+                "versionCode": man.version_code,
+                "versionName": man.version_name,
+            }
+            data[appid].append({k: v for k, v in entry.items() if v is not None})
     return data
 
 
 # FIXME
-def v2_index(apps: List[App], apks: Dict[str, Apk], meta: Dict[str, Dict[str, Metadata]],
-             ts: int, cfg: Config, localised_cfgs: Dict[str, LocalisedConfig]) -> Any:
+def v2_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
+             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
+             localised_cfgs: Dict[str, LocalisedConfig]) -> Any:
     """Create v2 index data."""
     apps, apks, meta, ts, cfg, localised_cfgs
     return {}
@@ -673,11 +681,48 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 # FIXME
 def do_init() -> None:
     """Create a new repo."""
+    raise NotImplementedError("FIXME")
 
 
 # FIXME
-def do_update() -> None:
+def do_update(verbose: bool = False) -> None:
     """Update index."""
+    meta_dir = Path("metadata")
+    repo_dir = Path("repo")
+    config_file = Path("config.yml")
+    config_dir = Path("config")
+    cfg = parse_config_yaml(config_file)
+    localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
+    apks: Dict[str, Dict[int, Apk]] = {}
+    apps, meta = [], {}
+    recipes = sorted(meta_dir.glob("*.yml"))
+    appids = set(recipe.stem for recipe in recipes)
+    for apkfile in sorted(repo_dir.glob("*.apk")):
+        if verbose:
+            print(f"Processing {str(apkfile)!r}...")
+        apk = get_apk_info(apkfile)
+        man = apk.manifest
+        if verbose:
+            print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
+        if man.appid not in appids:
+            raise Error(f"APK without recipe: {man.appid}")
+        if man.appid not in apks:
+            apks[man.appid] = {}
+        if man.version_code in apks[man.appid]:
+            raise Error(f"Duplicate: {man.appid}:{man.version_code}")
+        apks[man.appid][man.version_code] = apk
+    for recipe in recipes:
+        if verbose:
+            print(f"Processing {str(recipe)!r}...")
+        appid = recipe.stem
+        version_codes = sorted(apks.get(appid, {}).keys())
+        lv = max(version_codes) if version_codes else None
+        app = parse_recipe_yaml(recipe, lv)
+        app_dir = recipe.with_suffix("")
+        if app_dir.exists():
+            meta[appid] = parse_app_metadata(app_dir, version_codes)
+        apps.append(app)
+    make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs)
 
 
 # FIXME
@@ -702,6 +747,7 @@ def main() -> None:
     @cli.command(help="""
         update index
     """)
+    @click.option("-v", "--verbose", is_flag=True, help="Be verbose.")
     def update(*args: Any, **kwargs: Any) -> None:
         do_update(*args, **kwargs)
 
