@@ -582,6 +582,7 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> Any:
 
 
 # FIXME
+# FIXME: hashed graphics files
 def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Any:
     """Create v1 index app localised data."""
     data = {}
