@@ -93,7 +93,8 @@ class App:
     name: str
     appid: str
     allowed_apk_signing_keys: List[str]
-    current_version: Optional[int]
+    current_version_code: int
+    current_version_name: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -169,12 +170,12 @@ class Metadata:
 
 
 # FIXME
-def parse_recipe_yaml(recipe_file: Path, latest_version: Optional[int] = None) -> App:
+def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     r"""
     Parse recipe YAML.
 
-    >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"))
-    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], current_version=None)
+    >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
+    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], current_version_code=10, current_version_name=None)
 
     """
     appid = recipe_file.stem
@@ -189,9 +190,10 @@ def parse_recipe_yaml(recipe_file: Path, latest_version: Optional[int] = None) -
                 allowed_apk_signing_keys = data["AllowedAPKSigningKeys"]
         else:
             allowed_apk_signing_keys = []
-        cv = data["CurrentVersionCode"] if "CurrentVersionCode" in data else latest_version
+        cvc = data.get("CurrentVersionCode", latest_version_code)
+        cvn = data.get("CurrentVersion")
         return App(name=name, appid=appid, allowed_apk_signing_keys=allowed_apk_signing_keys,
-                   current_version=cv)
+                   current_version_code=cvc, current_version_name=cvn)
 
 
 # FIXME
@@ -565,21 +567,21 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> Any:
     for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
             "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
-            "suggestedVersionName": None,           # FIXME
-            "suggestedVersionCode": str(app.current_version),
+            "suggestedVersionName": app.current_version_name,
+            "suggestedVersionCode": str(app.current_version_code),
             "license": "Unknown",                   # FIXME
             "name": app.name,
             "added": 0,                             # FIXME
             "packageName": app.appid,
             "lastUpdated": 0,                       # FIXME
-            "localized": v1_localised(meta[app.appid], app.current_version),
+            "localized": v1_localised(meta[app.appid], app.current_version_code),
         }
         data.append({k: v for k, v in entry.items() if v is not None})
     return data
 
 
 # FIXME
-def v1_localised(app_meta: Dict[str, Metadata], current_version: Optional[int]) -> Any:
+def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Any:
     """Create v1 index app localised data."""
     data = {}
     for locale, meta in app_meta.items():
@@ -592,7 +594,7 @@ def v1_localised(app_meta: Dict[str, Metadata], current_version: Optional[int]) 
                 file.name for file in meta.phone_screenshots_files
             ] if meta.phone_screenshots_files else None,
             "summary": meta.short_description,
-            "whatsNew": meta.changelogs.get(current_version) if current_version else None,
+            "whatsNew": meta.changelogs.get(current_version_code),
         }
         data[locale] = {k: v for k, v in entry.items() if v is not None}
     return data
@@ -715,9 +717,10 @@ def do_update(verbose: bool = False) -> None:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
         appid = recipe.stem
-        version_codes = sorted(apks.get(appid, {}).keys())
-        lv = max(version_codes) if version_codes else None
-        app = parse_recipe_yaml(recipe, lv)
+        if appid not in apks:
+            raise Error(f"recipe without APKs: {appid}")
+        version_codes = sorted(apks[appid].keys())
+        app = parse_recipe_yaml(recipe, version_codes[-1])
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
             meta[appid] = parse_app_metadata(app_dir, version_codes)
