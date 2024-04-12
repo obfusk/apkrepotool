@@ -35,6 +35,8 @@ if os.environ.get("APKREPOTOOL_DIR"):
 else:
     APKREPOTOOL_DIR = Path.home() / ".apkrepotool"
 
+DEFAULT_LOCALE = "en-US"
+
 CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
 
 SDK_ENV = ("ANDROID_HOME", "ANDROID_SDK", "ANDROID_SDK_ROOT")
@@ -542,8 +544,9 @@ def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
 
 
 # FIXME
+# FIXME: use localised config if it exists; ensure identical if both do
 def v1_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
-             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config) -> Any:
+             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config) -> Dict[str, Any]:
     """Create v1 index data."""
     return {
         "repo": {
@@ -561,7 +564,7 @@ def v1_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
 
 
 # FIXME
-def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> Any:
+def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> List[Dict[str, Any]]:
     """Create v1 index apps data."""
     data = []
     # index is historically sorted by name
@@ -583,7 +586,7 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> Any:
 
 # FIXME
 # FIXME: hashed graphics files
-def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Any:
+def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Dict[str, Any]:
     """Create v1 index app localised data."""
     data = {}
     for locale, meta in app_meta.items():
@@ -603,16 +606,17 @@ def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> An
 
 
 # FIXME
-def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Any:
+# FIXME: sort by appid, group, signer, version_code
+def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
     """Create v1 index packages data."""
-    data: Dict[str, Any] = {}
+    data: Dict[str, List[Any]] = {}
     for appid, versions in sorted(apks.items(), key=lambda kv: kv[0]):
         for apk in versions.values():
             man = apk.manifest
             if appid not in data:
                 data[appid] = []
             entry = {
-                "added": 0,                             # FIXME
+                "added": 0,                         # FIXME
                 "apkName": PurePath(apk.filename).name,
                 "features": [f.name for f in man.features] or None,
                 "hash": apk.sha256,
@@ -634,12 +638,129 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Any:
 
 
 # FIXME
+# FIXME: mirrors etc.
+# FIXME: ensure localised config and regular one are identical if both exist
 def v2_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
              meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
-             localised_cfgs: Dict[str, LocalisedConfig]) -> Any:
+             localised_cfgs: Dict[str, LocalisedConfig]) -> Dict[str, Any]:
     """Create v2 index data."""
-    apps, apks, meta, ts, cfg, localised_cfgs
-    return {}
+    if DEFAULT_LOCALE not in localised_cfgs:
+        localised_cfgs = localised_cfgs.copy()
+        localised_cfgs[DEFAULT_LOCALE] = LocalisedConfig(
+            repo_name=cfg.repo_name, repo_description=cfg.repo_description)
+    return {
+        "repo": {
+            "name": {k: v.repo_name for k, v in localised_cfgs.items()},
+            "description": {k: v.repo_description for k, v in localised_cfgs.items()},
+            "icon": {
+                k: {
+                    "name": "/icons/icon.png",      # FIXME
+                    "sha256": "FIXME",              # FIXME
+                    "size": 0,                      # FIXME
+                } for k, v in localised_cfgs.items()
+            },
+            "address": cfg.repo_url,
+            "timestamp": ts,
+        },
+        "packages": v2_packages(apps, apks, meta),
+    }
+
+
+# FIXME
+# FIXME: hashed graphics files, sha256 & size
+def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
+                meta: Dict[str, Dict[str, Metadata]]) -> Dict[str, Any]:
+    """Create v2 index packages data."""
+    data = {}
+    for app in apps:
+        loc = meta[app.appid]
+        mv = max(apks[app.appid].keys())
+        signer = apks[app.appid][mv].signing_key    # FIXME: sort by ...
+        data[app.appid] = {
+            "metadata": {
+                "added": 0,                         # FIXME
+                "lastUpdated": 0,                   # FIXME
+                "featureGraphic": {
+                    locale: {
+                        "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.name}",
+                        "sha256": "FIXME",          # FIXME
+                        "size": 0,                  # FIXME
+                    } for locale, m in loc.items() if m.feature_graphic_file
+                },
+                "screenshots": {
+                    "phone": {
+                        locale: [
+                            {
+                                "name": f"/{app.appid}/{locale}/phoneScreenshots/{file.name}",
+                                "sha256": "FIXME",  # FIXME
+                                "size": 0,          # FIXME
+                            } for file in m.phone_screenshots_files
+                        ] for locale, m in loc.items() if m.phone_screenshots_files
+                    },
+                },
+                "name": {
+                    DEFAULT_LOCALE: app.name,       # FIXME
+                },
+                "summary": {
+                    locale: m.short_description
+                    for locale, m in loc.items() if m.short_description is not None
+                },
+                "description": {
+                    locale: m.full_description
+                    for locale, m in loc.items() if m.full_description is not None
+                },
+                "icon": {
+                    locale: {
+                        "name": f"/{app.appid}/{locale}/{m.icon_file.name}",
+                        "sha256": "FIXME",          # FIXME
+                        "size": 0,                  # FIXME
+                    } for locale, m in loc.items() if m.icon_file
+                },
+                "preferredSigner": signer,
+            },
+            "versions": v2_versions(apks[app.appid]),
+        }
+    return data
+
+
+# FIXME
+# FIXME: sort by group, signer, version_code
+def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
+    """Create v2 index app versions data."""
+    data = {}
+    for apk in apks.values():
+        man = apk.manifest
+        features = [{"name": f.name} for f in man.features]
+        permissions = [
+            {"name": p.name, "maxSdkVersion": p.maxSdkVersion}
+            if p.maxSdkVersion is not None else {"name": p.name}
+            for p in man.permissions
+        ]
+        manifest = {
+            "versionName": man.version_name,
+            "versionCode": man.version_code,
+            "features": features,
+            "usesSdk": {
+                "minSdkVersion": man.min_sdk,
+                "targetSdkVersion": man.target_sdk,
+            },
+            "signer": {"sha256": [apk.signing_key]},
+            "usesPermission": permissions,
+        }
+        if not manifest["features"]:
+            del manifest["features"]
+        if not manifest["usesPermission"]:
+            del manifest["usesPermission"]
+        data[apk.sha256] = {
+            "added": 0,                             # FIXME
+            "file": {
+                "name": f"/{PurePath(apk.filename).name}",
+                "sha256": apk.sha256,
+                "size": apk.size,
+            },
+            "manifest": manifest,
+        }
+    return data
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
