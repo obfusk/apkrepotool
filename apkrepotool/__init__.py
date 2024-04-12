@@ -106,6 +106,7 @@ class Feature:
 class Permission:
     """AndroidManifest.xml uses-permission."""
     name: str
+    minSdkVersion: Optional[int]
     maxSdkVersion: Optional[int]
 
 
@@ -346,11 +347,14 @@ def get_manifest(apkfile: str) -> Manifest:
         if get_str(elem, "required") == "true":
             features.append(Feature(get_str(elem, "name")))
     permissions = []
-    for elem in root.iterfind("uses-permission"):
-        maxSdk = get(elem, "maxSdkVersion")
-        permissions.append(Permission(
-            name=get_str(elem, "name"),
-            maxSdkVersion=int(maxSdk) if maxSdk is not None else None))
+    for k in ("uses-permission", "uses-permission-sdk-23"):
+        for elem in root.iterfind(k):
+            minSdkVersion = 23 if k == "uses-permission-sdk-23" else None
+            maxsv = get(elem, "maxSdkVersion")
+            maxSdkVersion = int(maxsv) if maxsv is not None else None
+            permissions.append(Permission(
+                name=get_str(elem, "name"), minSdkVersion=minSdkVersion,
+                maxSdkVersion=maxSdkVersion))
     return Manifest(
         appid=get_str(root, "package", android=False),
         version_code=int(get_str(root, "versionCode")),
