@@ -840,13 +840,13 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 
 
 # FIXME
-def do_init() -> None:
-    """Create a new repo."""
-    raise NotImplementedError("FIXME")
+# def do_init() -> None:
+#     """Create a new repo."""
+#     raise NotImplementedError("FIXME")
 
 
 # FIXME
-def do_update(verbose: bool = False) -> None:
+def do_update(verbose: int = 0) -> None:
     """Update index."""
     meta_dir = Path("metadata")
     repo_dir = Path("repo")
@@ -908,16 +908,16 @@ def main() -> None:
     def cli() -> None:
         pass
 
-    @cli.command(help="""
-        create a new repo
-    """)
-    def init(*args: Any, **kwargs: Any) -> None:
-        do_init(*args, **kwargs)
+    # @cli.command(help="""
+    #     create a new repo
+    # """)
+    # def init(*args: Any, **kwargs: Any) -> None:
+    #     do_init(*args, **kwargs)
 
     @cli.command(help="""
-        update index
+        generate/update index
     """)
-    @click.option("-v", "--verbose", is_flag=True, help="Be verbose.")
+    @click.option("-v", "--verbose", count=True, help="Increase verbosity.")
     def update(*args: Any, **kwargs: Any) -> None:
         do_update(*args, **kwargs)
 
