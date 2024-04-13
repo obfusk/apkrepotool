@@ -9,6 +9,8 @@ apkrepotool - manage APK repos
 FIXME
 """
 
+from __future__ import annotations
+
 import binascii
 import hashlib
 import json
@@ -158,6 +160,19 @@ class LocalisedConfig:
     repo_description: str
 
 
+@dataclass(frozen=True)
+class FileInfo:
+    """File info."""
+    path: Path
+    size: int
+    sha256: str
+
+    @classmethod
+    def from_path(_cls, path: Path) -> FileInfo:
+        """Create from Path."""
+        return FileInfo(path, path.stat().st_size, get_sha256(path))
+
+
 # FIXME
 @dataclass(frozen=True)
 class Metadata:
@@ -166,9 +181,9 @@ class Metadata:
     short_description: Optional[str]
     full_description: Optional[str]
     changelogs: Dict[int, str]
-    icon_file: Optional[Path]
-    feature_graphic_file: Optional[Path]
-    phone_screenshots_files: List[Path]
+    icon_file: Optional[FileInfo]
+    feature_graphic_file: Optional[FileInfo]
+    phone_screenshots_files: List[FileInfo]
 
 
 # FIXME
@@ -244,12 +259,28 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
     r"""
     Parse (fastlane) metadata.
 
+    >>> import dataclasses
     >>> app_dir = Path("test/metadata/android.appsecurity.cts.tinyapp")
     >>> meta = parse_app_metadata(app_dir, [10])
     >>> sorted(meta.keys())
     ['en-US']
-    >>> meta["en-US"]
-    Metadata(title='title', short_description='short description', full_description='full description\n', changelogs={10: 'changelog for version code 10\n'}, icon_file=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/icon.png'), feature_graphic_file=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/featureGraphic.png'), phone_screenshots_files=[PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/01.png'), PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/02.png')])
+    >>> for field in dataclasses.fields(meta["en-US"]):
+    ...     x = getattr(meta["en-US"], field.name)
+    ...     if isinstance(x, list):
+    ...         print(f"{field.name}:")
+    ...         for y in x:
+    ...             print(f"  {y!r}")
+    ...     else:
+    ...         print(f"{field.name}={x!r}")
+    title='title'
+    short_description='short description'
+    full_description='full description\n'
+    changelogs={10: 'changelog for version code 10\n'}
+    icon_file=FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/icon.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    feature_graphic_file=FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/featureGraphic.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    phone_screenshots_files:
+      FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/01.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/02.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
 
     """
     metadata = {}
@@ -273,9 +304,12 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
             icon_path = images_dir / "icon.png"
             fg_path = images_dir / "featureGraphic.png"
             ps_dir = images_dir / "phoneScreenshots"
-            icon_file = icon_path if icon_path.exists() else None
-            fg_file = fg_path if fg_path.exists() else None
-            ps_files = sorted(ps_dir.glob("*.png")) if ps_dir.exists() else []
+            icon_file = FileInfo.from_path(icon_path) if icon_path.exists() else None
+            fg_file = FileInfo.from_path(fg_path) if fg_path.exists() else None
+            if ps_dir.exists():
+                ps_files = [FileInfo.from_path(p) for p in sorted(ps_dir.glob("*.png"))]
+            else:
+                ps_files = []
         else:
             icon_file, fg_file, ps_files = None, None, []
         metadata[locale_dir.name] = Metadata(
@@ -592,11 +626,11 @@ def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Di
     for locale, meta in app_meta.items():
         entry = {
             "description": meta.full_description,
-            "featureGraphic": meta.feature_graphic_file.name if meta.feature_graphic_file else None,
-            "icon": meta.icon_file.name if meta.icon_file else None,
+            "featureGraphic": meta.feature_graphic_file.path.name if meta.feature_graphic_file else None,
+            "icon": meta.icon_file.path.name if meta.icon_file else None,
             "name": meta.title,
             "phoneScreenshots": [
-                file.name for file in meta.phone_screenshots_files
+                file.path.name for file in meta.phone_screenshots_files
             ] if meta.phone_screenshots_files else None,
             "summary": meta.short_description,
             "whatsNew": meta.changelogs.get(current_version_code),
@@ -682,18 +716,18 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
                 "lastUpdated": 0,                   # FIXME
                 "featureGraphic": {
                     locale: {
-                        "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.name}",
-                        "sha256": "FIXME",          # FIXME
-                        "size": 0,                  # FIXME
+                        "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.path.name}",
+                        "sha256": m.feature_graphic_file.sha256,
+                        "size": m.feature_graphic_file.size,
                     } for locale, m in loc.items() if m.feature_graphic_file
                 },
                 "screenshots": {
                     "phone": {
                         locale: [
                             {
-                                "name": f"/{app.appid}/{locale}/phoneScreenshots/{file.name}",
-                                "sha256": "FIXME",  # FIXME
-                                "size": 0,          # FIXME
+                                "name": f"/{app.appid}/{locale}/phoneScreenshots/{file.path.name}",
+                                "sha256": file.sha256,
+                                "size": file.size,
                             } for file in m.phone_screenshots_files
                         ] for locale, m in loc.items() if m.phone_screenshots_files
                     },
@@ -711,9 +745,9 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
                 },
                 "icon": {
                     locale: {
-                        "name": f"/{app.appid}/{locale}/{m.icon_file.name}",
-                        "sha256": "FIXME",          # FIXME
-                        "size": 0,                  # FIXME
+                        "name": f"/{app.appid}/{locale}/{m.icon_file.path.name}",
+                        "sha256": m.icon_file.sha256,
+                        "size": m.icon_file.size,
                     } for locale, m in loc.items() if m.icon_file
                 },
                 "preferredSigner": signer,
