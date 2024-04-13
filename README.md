@@ -40,11 +40,25 @@ FIXME
 
 ## TODO
 
-* [x] create `index-v1.json`
-* [x] create `index-v2.json`
-* [ ] create `entry.json`
-* [ ] create `diffs/*.json`
-* ...
+* [x] `index-v1.json`
+* [x] `index-v2.json`
+* [ ] README
+* [ ] `entry.json`
+* [ ] `-vv` (show files processed)
+* [ ] keystore config (no passwds in yml)
+* [ ] signed & compressed JARs
+* [ ] `timestamps.json`
+* [ ] icon
+* [ ] `diffs/*.json`
+* [ ] `cache/apks.json`
+* [ ] advanced options (e.g. mirrors)
+* [ ] more metadata (license, links, ...)
+* [ ] get (XML) icons from APK
+* [ ] transparency log
+* [ ] proper `repro-apk` `binres` release & dependency
+* [ ] JSON schemas
+* [ ] HSM support
+* [ ] ...
 
 ## Installing
 
