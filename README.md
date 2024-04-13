@@ -112,6 +112,8 @@ Processing 'metadata/me.hackerchick.catima.yml'...
 
 </details>
 
+## Configuration Files
+
 ### config.yml
 
 ```yaml
