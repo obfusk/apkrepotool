@@ -6,7 +6,10 @@
 """
 apkrepotool - manage APK repos
 
-FIXME
+apkrepotool is a tool for managing APK repositories that can be used with an
+F-Droid-compatible client, specifically for generating v1 & v2 index JSON & JAR
+files from a compatible directory structure with the required YAML metadata and
+fastlane metadata & image files.
 """
 
 from __future__ import annotations
