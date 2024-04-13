@@ -7,7 +7,7 @@
 apkrepotool - manage APK repos
 
 apkrepotool is a tool for managing APK repositories that can be used with an
-F-Droid-compatible client, specifically for generating v1 & v2 index JSON & JAR
+F-Droid-compatible client; specifically, it generates v1 & v2 index JSON & JAR
 files from a compatible directory structure with the required YAML metadata and
 fastlane metadata & image files.
 """
