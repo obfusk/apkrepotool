@@ -254,14 +254,13 @@ def parse_localised_config_yaml(config_dir: Path) -> Dict[str, LocalisedConfig]:
 
 
 # FIXME
-# FIXME: metadata/<app>/<locale>/images/ vs repo/<app>/<locale>/ (& hashes)
-def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Metadata]:
+def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) -> Dict[str, Metadata]:
     r"""
-    Parse (fastlane) metadata.
+    Parse (fastlane) metadata (from app_dir) and images (from repo_dir).
 
     >>> import dataclasses
     >>> app_dir = Path("test/metadata/android.appsecurity.cts.tinyapp")
-    >>> meta = parse_app_metadata(app_dir, [10])
+    >>> meta = parse_app_metadata(app_dir, Path("test/repo"), [10])
     >>> sorted(meta.keys())
     ['en-US']
     >>> for field in dataclasses.fields(meta["en-US"]):
@@ -276,11 +275,11 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
     short_description='short description'
     full_description='full description\n'
     changelogs={10: 'changelog for version code 10\n'}
-    icon_file=FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/icon.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
-    feature_graphic_file=FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/featureGraphic.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    icon_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/icon.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    feature_graphic_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/featureGraphic.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
     phone_screenshots_files:
-      FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/01.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
-      FileInfo(path=PosixPath('test/metadata/android.appsecurity.cts.tinyapp/en-US/images/phoneScreenshots/02.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/phoneScreenshots/01.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/phoneScreenshots/02.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
 
     """
     metadata = {}
@@ -289,7 +288,6 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
         short_desc_path = locale_dir / "short_description.txt"
         full_desc_path = locale_dir / "full_description.txt"
         changelog_dir = locale_dir / "changelogs"
-        images_dir = locale_dir / "images"
         title = title_path.read_text().strip() if title_path.exists() else None
         short_desc = short_desc_path.read_text().strip() if short_desc_path.exists() else None
         full_desc = full_desc_path.read_text() if full_desc_path.exists() else None
@@ -300,6 +298,7 @@ def parse_app_metadata(app_dir: Path, version_codes: List[int]) -> Dict[str, Met
                     version_code = int(changelog.stem)
                     if version_code in version_codes:
                         changelogs[version_code] = changelog.read_text()
+        images_dir = repo_dir / app_dir.name / locale_dir.name
         if images_dir.exists():
             icon_path = images_dir / "icon.png"
             fg_path = images_dir / "featureGraphic.png"
@@ -880,7 +879,7 @@ def do_update(verbose: bool = False) -> None:
         app = parse_recipe_yaml(recipe, version_codes[-1])
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
-            meta[appid] = parse_app_metadata(app_dir, version_codes)
+            meta[appid] = parse_app_metadata(app_dir, repo_dir, version_codes)
         if not app.allowed_apk_signing_keys:
             print(f"Warning: no allowed signing keys specified for {appid}", file=sys.stderr)
         aask[appid] = app.allowed_apk_signing_keys
