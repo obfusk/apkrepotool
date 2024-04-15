@@ -885,6 +885,8 @@ def do_update(verbose: int = 0) -> None:
     apps, meta, aask, one_signer_only = [], {}, {}, {}
     recipes = sorted(meta_dir.glob("*.yml"))
     appids = set(recipe.stem for recipe in recipes)
+    if verbose > 1:
+        print(f"Config locales: {list(localised_cfgs.keys())}.")
     for apkfile in sorted(repo_dir.glob("*.apk")):
         if verbose:
             print(f"Processing {str(apkfile)!r}...")
@@ -910,6 +912,8 @@ def do_update(verbose: int = 0) -> None:
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
             meta[appid] = parse_app_metadata(app_dir, repo_dir, version_codes)
+            if verbose > 1:
+                print(f"  Metadata locales: {list(meta[appid].keys())}.")
         if not app.allowed_apk_signing_keys:
             print(f"Warning: no allowed signing keys specified for {appid!r}", file=sys.stderr)
         aask[appid] = app.allowed_apk_signing_keys
