@@ -27,6 +27,7 @@ passwords to git!  And please make sure you pay attention to the key properties
 since you can't change the signing key later.
 
 ```bash
+$ keytool -genkey -v -keystore keystore.jks -alias myrepo -keyalg RSA -keysize 4096 -sigalg SHA512withRSA -validity 10000
 ```
 
 ## CLI
