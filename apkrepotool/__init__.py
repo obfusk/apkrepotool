@@ -53,6 +53,8 @@ import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateEncodingException;
+import java.security.cert.X509Certificate;
+import java.util.List;
 
 import com.android.apksig.ApkVerificationIssue;
 import com.android.apksig.ApkVerifier;
@@ -64,16 +66,21 @@ public class Cert {
       ApkVerifier.Builder builder = new ApkVerifier.Builder(new File(args[0]));
       ApkVerifier.Result result = builder.build().verify();
       if (result.isVerified()) {
-        byte[] cert = result.getSignerCertificates().get(0).getEncoded();
+        List<X509Certificate> signerCerts = result.getSignerCertificates();
         String versions = String.join(",",
           "v1=" + (result.isVerifiedUsingV1Scheme() ? "true" : "false"),
           "v2=" + (result.isVerifiedUsingV2Scheme() ? "true" : "false"),
           "v3=" + (result.isVerifiedUsingV3Scheme() ? "true" : "false"));
-        System.out.write(("verified\n" + versions + "\n" + cert.length + "\n").getBytes("UTF-8"));
-        System.out.write(cert);
+        String header = "verified\n" + versions + "\n" + signerCerts.size() + "\n";
+        System.out.write(header.getBytes("UTF-8"));
+        for (X509Certificate signerCert : signerCerts) {
+          byte[] cert = signerCert.getEncoded();
+          System.out.write((cert.length + ":").getBytes("UTF-8"));
+          System.out.write(cert);
+        }
       } else {
         for (ApkVerificationIssue error : result.getErrors()) {
-          System.err.println("ERROR: " + error);
+          System.err.println("Error: " + error);
         }
         System.exit(1);
       }
@@ -136,7 +143,7 @@ class Apk:
     filename: str
     size: int
     sha256: str
-    signing_key: str
+    signing_keys: List[str]
     fdroid_sig: str
     manifest: Manifest
 
@@ -334,16 +341,16 @@ def get_apk_info(apkfile: Path) -> Apk:
     filename='test/repo/golden-aligned-v1v2v3-out.apk'
     size=12865
     sha256='ba7828ba42a3b68bd3acff78773e41d6a62aabe6317538671441c568748d9cd7'
-    signing_key='fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'
+    signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
     fdroid_sig='506ceb2a3116981827a3990f3446d3af'
 
     """
     size = apkfile.stat().st_size
-    cert, _ = get_signing_cert(apkfile)
-    fingerprint = hashlib.sha256(cert).hexdigest()
-    sig = hashlib.md5(binascii.hexlify(cert)).hexdigest()
+    certs, _ = get_signing_certs(apkfile)
+    fingerprints = [hashlib.sha256(cert).hexdigest() for cert in certs]
+    sig = hashlib.md5(binascii.hexlify(certs[0])).hexdigest()
     return Apk(filename=str(apkfile), size=size, sha256=get_sha256(apkfile),
-               signing_key=fingerprint, fdroid_sig=sig, manifest=get_manifest(apkfile))
+               signing_keys=fingerprints, fdroid_sig=sig, manifest=get_manifest(apkfile))
 
 
 # FIXME
@@ -420,15 +427,16 @@ def get_sha256(file: Path) -> str:
     return sha.hexdigest()
 
 
-def get_signing_cert(apkfile: Path) -> Tuple[bytes, Dict[str, bool]]:
+def get_signing_certs(apkfile: Path) -> Tuple[List[bytes], Dict[str, bool]]:
     r"""
-    Get APK signing key certificate using apksigner JAR.
+    Get APK signing key certificates using apksigner JAR.
 
     NB: this validates the signature(s)!
 
-    >>> cert, vsns = get_signing_cert(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
-    >>> len(cert)
-    765
+    >>> certs, vsns = get_signing_certs(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
+    >>> for cert in certs:
+    ...     hashlib.sha256(cert).hexdigest()
+    'fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'
     >>> vsns
     {'v1': True, 'v2': True, 'v3': True}
 
@@ -450,13 +458,26 @@ def get_signing_cert(apkfile: Path) -> Tuple[bytes, Dict[str, bool]]:
     except FileNotFoundError as e:
         raise Error(f"Could not run apksigner: {e}") from e
     try:
-        verified, versions, size, cert = out.split(b"\n", 3)
+        verified, versions, num_certs_str, certs_data = out.split(b"\n", 3)
+        num_certs = int(num_certs_str)
+        if verified != b"verified" or num_certs < 1:
+            raise SigError("Verification output mismatch")
+        vsns = {k: v == "true" for kv in versions.decode().split(",") for k, v in [kv.split("=")]}
+        if sorted(vsns.keys()) != ["v1", "v2", "v3"] or not any(vsns.values()):
+            raise SigError("Verification output mismatch")
+        certs = []
+        for i in range(num_certs):
+            cert_size_str, certs_data = certs_data.split(b":", 1)
+            cert_size = int(cert_size_str)
+            cert, certs_data = certs_data[:cert_size], certs_data[cert_size:]
+            if len(cert) != cert_size:
+                raise SigError("Verification output mismatch")
+            certs.append(cert)
+        if certs_data:
+            raise SigError("Verification output mismatch")
     except ValueError:
         raise SigError("Verification output mismatch")      # pylint: disable=W0707
-    if verified != b"verified" or int(size) != len(cert):
-        raise SigError("Verification output mismatch")
-    vsns = {k: v == "true" for kv in versions.decode().split(",") for k, v in [kv.split("=")]}
-    return cert, vsns
+    return certs, vsns
 
 
 # FIXME
@@ -660,7 +681,7 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
                 "minSdkVersion": man.min_sdk,
                 "packageName": man.appid,
                 "sig": apk.fdroid_sig,
-                "signer": apk.signing_key,
+                "signer": apk.signing_keys[0],
                 "size": apk.size,
                 "targetSdkVersion": man.target_sdk,
                 "uses-permission": [
@@ -711,7 +732,7 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
     for app in apps:
         loc = meta[app.appid]
         mv = max(apks[app.appid].keys())
-        signer = apks[app.appid][mv].signing_key    # FIXME: sort by ...
+        signer = apks[app.appid][mv].signing_keys[0]    # FIXME: sort by ...
         data[app.appid] = {
             "metadata": {
                 "added": 0,                         # FIXME
@@ -780,7 +801,7 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
                 "minSdkVersion": man.min_sdk,
                 "targetSdkVersion": man.target_sdk,
             },
-            "signer": {"sha256": [apk.signing_key]},
+            "signer": {"sha256": apk.signing_keys},
             "usesPermission": permissions,
         }
         if not manifest["features"]:
@@ -890,8 +911,9 @@ def do_update(verbose: int = 0) -> None:
     for appid, versions in apks.items():
         for apk in versions.values():
             if signers := aask[apk.manifest.appid]:
-                if apk.signing_key not in signers:
-                    raise Error(f"Unallowed signer for {apk.manifest.appid}: {apk.signing_key}")
+                # FIXME: one_cert_only
+                if apk.signing_keys[0] not in signers:
+                    raise Error(f"Unallowed signer for {apk.manifest.appid}: {apk.signing_keys[0]}")
     make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs)
 
 
