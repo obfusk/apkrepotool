@@ -586,10 +586,12 @@ def _vsn(v: str) -> Tuple[int, ...]:
 
 
 # FIXME
-# FIXME: entry.json, signed .jar, diff/*.json
+# FIXME: signed .jar, diff/*.json
+# FIXME: --pretty?
 def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
-               localised_cfgs: Dict[str, LocalisedConfig], verbose: int = 0) -> None:
+               localised_cfgs: Dict[str, LocalisedConfig], *,
+               pretty: bool = False, verbose: int = 0) -> None:
     """Create & write v1 & v2 index."""
     ts = int(time.time()) * 1000
     v1_data = v1_index(apps, apks, meta, ts, cfg)
@@ -597,13 +599,29 @@ def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
     if verbose:
         print("Writing index-v1.json...")
     with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
-        json.dump(v1_data, fh, indent=2)
-        fh.write("\n")
+        if pretty:
+            json.dump(v1_data, fh, indent=2)
+            fh.write("\n")
+        else:
+            json.dump(v1_data, fh)
     if verbose:
         print("Writing index-v2.json...")
     with (repo_dir / "index-v2.json").open("w", encoding="utf-8") as fh:
-        json.dump(v2_data, fh, indent=2)
-        fh.write("\n")
+        if pretty:
+            json.dump(v2_data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        else:
+            json.dump(v2_data, fh, ensure_ascii=False)
+
+    entry = v2_entry(ts, len(apps), FileInfo.from_path(repo_dir / "index-v2.json"))
+    if verbose:
+        print("Writing entry.json...")
+    with (repo_dir / "entry.json").open("w", encoding="utf-8") as fh:
+        if pretty:
+            json.dump(entry, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        else:
+            json.dump(entry, fh, ensure_ascii=False)
 
 
 # FIXME
@@ -824,6 +842,22 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
             "manifest": manifest,
         }
     return data
+
+
+# FIXME: diffs
+def v2_entry(ts: int, packages: int, index_info: FileInfo) -> Dict[str, Any]:
+    """Create v2 entry data."""
+    return {
+        "timestamp": ts,
+        "version": 20002,
+        "index": {
+            "name": f"/{index_info.path.name}",
+            "sha256": index_info.sha256,
+            "size": index_info.size,
+            "numPackages": packages,
+        },
+        "diffs": {}
+    }
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,

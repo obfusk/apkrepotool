@@ -137,12 +137,12 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 
 * [x] `index-v1.json`
 * [x] `index-v2.json`
-* [ ] README
-* [ ] `entry.json`
-* [ ] `-vv` (show files processed)
+* [x] `entry.json`
+* [x] `-vv` (show files processed?)
 * [ ] keystore config (no passwds in yml)
 * [ ] signed & compressed JARs
 * [ ] `timestamps.json`
+* [ ] README
 * [ ] icon
 * [ ] `diffs/*.json`
 * [ ] `cache/apks.json`
