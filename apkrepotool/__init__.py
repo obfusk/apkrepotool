@@ -589,14 +589,18 @@ def _vsn(v: str) -> Tuple[int, ...]:
 # FIXME: entry.json, signed .jar, diff/*.json
 def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
-               localised_cfgs: Dict[str, LocalisedConfig]) -> None:
+               localised_cfgs: Dict[str, LocalisedConfig], verbose: int = 0) -> None:
     """Create & write v1 & v2 index."""
     ts = int(time.time()) * 1000
     v1_data = v1_index(apps, apks, meta, ts, cfg)
     v2_data = v2_index(apps, apks, meta, ts, cfg, localised_cfgs)
+    if verbose:
+        print("Writing index-v1.json...")
     with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
         json.dump(v1_data, fh, indent=2)
         fh.write("\n")
+    if verbose:
+        print("Writing index-v2.json...")
     with (repo_dir / "index-v2.json").open("w", encoding="utf-8") as fh:
         json.dump(v2_data, fh, indent=2)
         fh.write("\n")
@@ -920,7 +924,7 @@ def do_update(verbose: int = 0) -> None:
             if signers := aask[appid]:
                 if apk.signing_keys[0] not in signers:
                     raise Error(f"Unallowed signer for {appid!r}: {apk.signing_keys[0]}")
-    make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs)
+    make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs, verbose=verbose)
 
 
 # FIXME
