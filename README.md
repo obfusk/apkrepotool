@@ -139,14 +139,15 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] `index-v2.json`
 * [x] `entry.json`
 * [x] `-vv` (show files processed?)
+* [x] `timestamps.json`
 * [ ] keystore config (no passwds in yml)
 * [ ] signed & compressed JARs
-* [ ] `timestamps.json`
 * [ ] README
 * [ ] icon
 * [ ] `diffs/*.json`
 * [ ] `cache/apks.json`
 * [ ] CI
+* [ ] hashed graphics files
 * [ ] advanced options (e.g. mirrors)
 * [ ] more metadata (license, links, ...)
 * [ ] get (XML) icons from APK
