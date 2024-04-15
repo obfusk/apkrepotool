@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import repro_apk.binres as binres       # FIXME: needs proper release & dependency
 
@@ -146,6 +146,7 @@ class Apk:
     sha256: str
     signing_keys: List[str]
     fdroid_sig: str
+    added: int
     manifest: Manifest
 
 
@@ -331,7 +332,7 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
 
 
 # FIXME
-def get_apk_info(apkfile: Path) -> Apk:
+def get_apk_info(apkfile: Path, added: int = 0) -> Apk:
     r"""
     Get APK info.
 
@@ -345,6 +346,7 @@ def get_apk_info(apkfile: Path) -> Apk:
     sha256='ba7828ba42a3b68bd3acff78773e41d6a62aabe6317538671441c568748d9cd7'
     signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
     fdroid_sig='506ceb2a3116981827a3990f3446d3af'
+    added=0
 
     """
     size = apkfile.stat().st_size
@@ -352,7 +354,8 @@ def get_apk_info(apkfile: Path) -> Apk:
     fingerprints = [hashlib.sha256(cert).hexdigest() for cert in certs]
     sig = hashlib.md5(binascii.hexlify(certs[0])).hexdigest()
     return Apk(filename=str(apkfile), size=size, sha256=get_sha256(apkfile),
-               signing_keys=fingerprints, fdroid_sig=sig, manifest=get_manifest(apkfile))
+               signing_keys=fingerprints, fdroid_sig=sig, added=added,
+               manifest=get_manifest(apkfile))
 
 
 # FIXME
@@ -588,14 +591,15 @@ def _vsn(v: str) -> Tuple[int, ...]:
 # FIXME
 # FIXME: signed .jar, diff/*.json
 # FIXME: --pretty?
-def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
+def make_index(*, repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
-               localised_cfgs: Dict[str, LocalisedConfig], *,
-               pretty: bool = False, verbose: int = 0) -> None:
+               localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
+               updated: Dict[str, int], ts: int, pretty: bool = False, verbose: int = 0) -> None:
     """Create & write v1 & v2 index."""
-    ts = int(time.time()) * 1000
-    v1_data = v1_index(apps, apks, meta, ts, cfg)
-    v2_data = v2_index(apps, apks, meta, ts, cfg, localised_cfgs)
+    v1_data = v1_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg,
+                       added=added, updated=updated)
+    v2_data = v2_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg, localised_cfgs=localised_cfgs,
+                       added=added, updated=updated)
     if verbose:
         print("Writing index-v1.json...")
     with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
@@ -626,8 +630,9 @@ def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
 
 # FIXME
 # FIXME: use localised config if it exists; ensure identical if both do
-def v1_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
-             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config) -> Dict[str, Any]:
+def v1_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
+             meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
+             added: Dict[str, int], updated: Dict[str, int]) -> Dict[str, Any]:
     """Create v1 index data."""
     return {
         "repo": {
@@ -639,13 +644,14 @@ def v1_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
             "description": cfg.repo_description,
         },
         "requests": {"install": [], "uninstall": []},
-        "apps": v1_apps(apps, meta),
+        "apps": v1_apps(apps, meta, added, updated),
         "packages": v1_packages(apks),
     }
 
 
 # FIXME
-def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> List[Dict[str, Any]]:
+def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
+            added: Dict[str, int], updated: Dict[str, int]) -> List[Dict[str, Any]]:
     """Create v1 index apps data."""
     data = []
     # index is historically sorted by name
@@ -656,9 +662,9 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]]) -> List[Dict[
             "suggestedVersionCode": str(app.current_version_code),
             "license": "Unknown",                   # FIXME
             "name": app.name,
-            "added": 0,                             # FIXME
+            "added": added[app.appid],
             "packageName": app.appid,
-            "lastUpdated": 0,                       # FIXME
+            "lastUpdated": updated[app.appid],
             "localized": v1_localised(meta[app.appid], app.current_version_code),
         }
         data.append({k: v for k, v in entry.items() if v is not None})
@@ -697,7 +703,7 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
             if appid not in data:
                 data[appid] = []
             entry = {
-                "added": 0,                         # FIXME
+                "added": apk.added,
                 "apkName": PurePath(apk.filename).name,
                 "features": [f.name for f in man.features] or None,
                 "hash": apk.sha256,
@@ -721,9 +727,10 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
 # FIXME
 # FIXME: mirrors etc.
 # FIXME: ensure localised config and regular one are identical if both exist
-def v2_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
+def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
              meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
-             localised_cfgs: Dict[str, LocalisedConfig]) -> Dict[str, Any]:
+             localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
+             updated: Dict[str, int]) -> Dict[str, Any]:
     """Create v2 index data."""
     if DEFAULT_LOCALE not in localised_cfgs:
         localised_cfgs = localised_cfgs.copy()
@@ -743,14 +750,15 @@ def v2_index(apps: List[App], apks: Dict[str, Dict[int, Apk]],
             "address": cfg.repo_url,
             "timestamp": ts,
         },
-        "packages": v2_packages(apps, apks, meta),
+        "packages": v2_packages(apps, apks, meta, added, updated),
     }
 
 
 # FIXME
 # FIXME: hashed graphics files, sha256 & size
 def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
-                meta: Dict[str, Dict[str, Metadata]]) -> Dict[str, Any]:
+                meta: Dict[str, Dict[str, Metadata]], added: Dict[str, int],
+                updated: Dict[str, int]) -> Dict[str, Any]:
     """Create v2 index packages data."""
     data = {}
     for app in apps:
@@ -759,8 +767,8 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
         signer = apks[app.appid][mv].signing_keys[0]    # FIXME: sort by ...
         data[app.appid] = {
             "metadata": {
-                "added": 0,                         # FIXME
-                "lastUpdated": 0,                   # FIXME
+                "added": added[app.appid],
+                "lastUpdated": updated[app.appid],
                 "featureGraphic": {
                     locale: {
                         "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.path.name}",
@@ -833,7 +841,7 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
         if not manifest["usesPermission"]:
             del manifest["usesPermission"]
         data[apk.sha256] = {
-            "added": 0,                             # FIXME
+            "added": apk.added,
             "file": {
                 "name": f"/{PurePath(apk.filename).name}",
                 "sha256": apk.sha256,
@@ -866,6 +874,22 @@ def v2_entry(ts: int, packages: int, index_info: FileInfo,
             } for t, (i, n) in diffs.items()
         },
     }
+
+
+def load_timestamps(parent_dir: Path) -> Dict[str, int]:
+    """Load timestamps.json."""
+    try:
+        with (parent_dir / "timestamps.json").open(encoding="utf-8") as fh:
+            return json.load(fh)    # type: ignore[no-any-return]
+    except FileNotFoundError:
+        return {}
+
+
+def save_timestamps(parent_dir: Path, timestamps: Dict[str, int]) -> None:
+    """Save timestamps.json."""
+    with (parent_dir / "timestamps.json").open("w", encoding="utf-8") as fh:
+        json.dump(timestamps, fh, indent=2)
+        fh.write("\n")
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
@@ -917,22 +941,28 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 # FIXME
 def do_update(verbose: int = 0) -> None:
     """Update index."""
+    cur_dir = Path(".")
     meta_dir = Path("metadata")
     repo_dir = Path("repo")
     config_file = Path("config.yml")
     config_dir = Path("config")
+    timestamp = int(time.time()) * 1000
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
     apks: Dict[str, Dict[int, Apk]] = {}
     apps, meta, aask, one_signer_only = [], {}, {}, {}
+    times: Dict[str, Set[int]] = {}
     recipes = sorted(meta_dir.glob("*.yml"))
     appids = set(recipe.stem for recipe in recipes)
+    timestamps = load_timestamps(cur_dir)
     if verbose > 1:
         print(f"Config locales: {list(localised_cfgs.keys())}.")
     for apkfile in sorted(repo_dir.glob("*.apk")):
         if verbose:
             print(f"Processing {str(apkfile)!r}...")
-        apk = get_apk_info(apkfile)
+        if apkfile.name not in timestamps:
+            timestamps[apkfile.name] = timestamp
+        apk = get_apk_info(apkfile, timestamps[apkfile.name])
         man = apk.manifest
         if verbose:
             print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
@@ -943,6 +973,10 @@ def do_update(verbose: int = 0) -> None:
         if man.version_code in apks[man.appid]:
             raise Error(f"Duplicate version code: {man.appid!r}:{man.version_code}")
         apks[man.appid][man.version_code] = apk
+        if man.appid not in times:
+            times[man.appid] = set()
+        times[man.appid].add(timestamps[apkfile.name])
+    save_timestamps(cur_dir, timestamps)
     for recipe in recipes:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
@@ -970,7 +1004,11 @@ def do_update(verbose: int = 0) -> None:
             if signers := aask[appid]:
                 if apk.signing_keys[0] not in signers:
                     raise Error(f"Unallowed signer for {appid!r}: {apk.signing_keys[0]}")
-    make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs, verbose=verbose)
+    added = {k: min(v) for k, v in times.items()}
+    updated = {k: max(v) for k, v in times.items()}
+    make_index(repo_dir=repo_dir, apps=apps, apks=apks, meta=meta, cfg=cfg,
+               localised_cfgs=localised_cfgs, added=added, updated=updated,
+               ts=timestamp, verbose=verbose)
 
 
 # FIXME
