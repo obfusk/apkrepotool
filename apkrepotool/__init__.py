@@ -107,6 +107,7 @@ class App:
     name: str
     appid: str
     allowed_apk_signing_keys: List[str]
+    one_cert_only: bool
     current_version_code: int
     current_version_name: Optional[str]
 
@@ -202,7 +203,7 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     Parse recipe YAML.
 
     >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
-    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], current_version_code=10, current_version_name=None)
+    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], one_cert_only=True, current_version_code=10, current_version_name=None)
 
     """
     appid = recipe_file.stem
@@ -217,10 +218,11 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
                 allowed_apk_signing_keys = data["AllowedAPKSigningKeys"]
         else:
             allowed_apk_signing_keys = []
+        oco = data.get("OneCertOnly", True)
         cvc = data.get("CurrentVersionCode", latest_version_code)
         cvn = data.get("CurrentVersion")
         return App(name=name, appid=appid, allowed_apk_signing_keys=allowed_apk_signing_keys,
-                   current_version_code=cvc, current_version_name=cvn)
+                   one_cert_only=oco, current_version_code=cvc, current_version_name=cvn)
 
 
 # FIXME
@@ -876,7 +878,7 @@ def do_update(verbose: int = 0) -> None:
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
     apks: Dict[str, Dict[int, Apk]] = {}
-    apps, meta, aask = [], {}, {}
+    apps, meta, aask, one_cert_only = [], {}, {}, {}
     recipes = sorted(meta_dir.glob("*.yml"))
     appids = set(recipe.stem for recipe in recipes)
     for apkfile in sorted(repo_dir.glob("*.apk")):
@@ -887,33 +889,37 @@ def do_update(verbose: int = 0) -> None:
         if verbose:
             print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
         if man.appid not in appids:
-            raise Error(f"APK without recipe: {man.appid}")
+            raise Error(f"APK without recipe: {str(apkfile)!r} ({man.appid!r})")
         if man.appid not in apks:
             apks[man.appid] = {}
         if man.version_code in apks[man.appid]:
-            raise Error(f"Duplicate: {man.appid}:{man.version_code}")
+            raise Error(f"Duplicate version code: {man.appid!r}:{man.version_code}")
         apks[man.appid][man.version_code] = apk
     for recipe in recipes:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
         appid = recipe.stem
         if appid not in apks:
-            raise Error(f"recipe without APKs: {appid}")
+            raise Error(f"recipe without APKs: {appid!r}")
         version_codes = sorted(apks[appid].keys())
         app = parse_recipe_yaml(recipe, version_codes[-1])
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
             meta[appid] = parse_app_metadata(app_dir, repo_dir, version_codes)
         if not app.allowed_apk_signing_keys:
-            print(f"Warning: no allowed signing keys specified for {appid}", file=sys.stderr)
+            print(f"Warning: no allowed signing keys specified for {appid!r}", file=sys.stderr)
         aask[appid] = app.allowed_apk_signing_keys
+        one_cert_only[appid] = app.one_cert_only
         apps.append(app)
     for appid, versions in apks.items():
         for apk in versions.values():
-            if signers := aask[apk.manifest.appid]:
-                # FIXME: one_cert_only
+            if len(apk.signing_keys) > 1:
+                if one_cert_only[appid]:
+                    raise Error(f"Multiple signers for {appid!r}: {apk.signing_keys}")
+                print(f"Warning: multiple signers for {appid!r}: {apk.signing_keys}", file=sys.stderr)
+            if signers := aask[appid]:
                 if apk.signing_keys[0] not in signers:
-                    raise Error(f"Unallowed signer for {apk.manifest.appid}: {apk.signing_keys[0]}")
+                    raise Error(f"Unallowed signer for {appid!r}: {apk.signing_keys[0]}")
     make_index(repo_dir, apps, apks, meta, cfg, localised_cfgs)
 
 
