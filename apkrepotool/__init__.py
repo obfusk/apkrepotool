@@ -612,8 +612,8 @@ def make_index(repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
             fh.write("\n")
         else:
             json.dump(v2_data, fh, ensure_ascii=False)
-
-    entry = v2_entry(ts, len(apps), FileInfo.from_path(repo_dir / "index-v2.json"))
+    diffs: Dict[int, Tuple[FileInfo, int]] = {}     # FIXME
+    entry = v2_entry(ts, len(apps), FileInfo.from_path(repo_dir / "index-v2.json"), diffs)
     if verbose:
         print("Writing entry.json...")
     with (repo_dir / "entry.json").open("w", encoding="utf-8") as fh:
@@ -845,7 +845,8 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
 
 
 # FIXME: diffs
-def v2_entry(ts: int, packages: int, index_info: FileInfo) -> Dict[str, Any]:
+def v2_entry(ts: int, packages: int, index_info: FileInfo,
+             diffs: Dict[int, Tuple[FileInfo, int]]) -> Dict[str, Any]:
     """Create v2 entry data."""
     return {
         "timestamp": ts,
@@ -856,7 +857,14 @@ def v2_entry(ts: int, packages: int, index_info: FileInfo) -> Dict[str, Any]:
             "size": index_info.size,
             "numPackages": packages,
         },
-        "diffs": {}
+        "diffs": {
+            str(t): {
+                "name": f"/diff/{i.path.name}",
+                "sha256": i.sha256,
+                "size": i.size,
+                "numPackages": n,
+            } for t, (i, n) in diffs.items()
+        },
     }
 
 
