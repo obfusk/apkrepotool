@@ -91,6 +91,7 @@ public class Cert {
   }
 }
 """[1:]
+CERT_JAVA_SHA256 = hashlib.sha256(CERT_JAVA_CODE.encode()).hexdigest()
 
 
 class Error(Exception):
@@ -508,7 +509,8 @@ def get_signing_certs(apkfile: Path, *, java_stuff: Optional[JavaStuff] = None) 
 
 
 # FIXME
-def get_cert_java(apksigner_jar: str, javac: Optional[str]) -> Path:
+def get_cert_java(apksigner_jar: str, javac: Optional[str], *,
+                  apkrepotool_dir: Optional[Path] = None) -> Path:
     r"""
     Get path to Cert.java or Cert.class.
 
@@ -517,26 +519,34 @@ def get_cert_java(apksigner_jar: str, javac: Optional[str]) -> Path:
 
     >>> str(APKREPOTOOL_DIR)
     '.tmp'
-    >>> str(get_cert_java(get_apksigner_jar(), get_java()[1]))
+    >>> p1 = get_cert_java(get_apksigner_jar(), get_java()[1])
+    >>> str(p1)
     '.tmp/Cert.class'
+    >>> subdir = Path(".tmp/subdir")
+    >>> p2 = get_cert_java(get_apksigner_jar(), get_java()[1], apkrepotool_dir=subdir)
+    >>> str(p2)
+    '.tmp/subdir/Cert.class'
+    >>> get_sha256(p1.with_suffix(".java"))
+    'bebfc0ffb1668995fdb5ef40df59ac939b61441790c4686efae03905eeb951e4'
+    >>> get_sha256(p2.with_suffix(".java"))
+    'bebfc0ffb1668995fdb5ef40df59ac939b61441790c4686efae03905eeb951e4'
+    >>> CERT_JAVA_SHA256
+    'bebfc0ffb1668995fdb5ef40df59ac939b61441790c4686efae03905eeb951e4'
 
     """
-    cert_java = APKREPOTOOL_DIR / "Cert.java"
+    if apkrepotool_dir is None:
+        apkrepotool_dir = APKREPOTOOL_DIR
+    cert_java = apkrepotool_dir / "Cert.java"
     cert_class = cert_java.with_suffix(".class")
-    javac_failed = cert_class.with_suffix(".javac_failed")
-    if cert_class.exists():
-        return cert_class
-    if not cert_java.exists():
-        APKREPOTOOL_DIR.mkdir(mode=0o700, exist_ok=True)
-        with cert_java.open("w", encoding="utf-8") as fh:
-            fh.write(CERT_JAVA_CODE)
-    if javac and not javac_failed.exists():
-        args = (javac, "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
-        subprocess.run(args, check=False)
+    if not (cert_java.exists() and get_sha256(cert_java) == CERT_JAVA_SHA256):
+        apkrepotool_dir.mkdir(mode=0o700, exist_ok=True)
+        cert_java.write_text(CERT_JAVA_CODE, encoding="utf-8")
         if cert_class.exists():
-            return cert_class
-        javac_failed.touch()
-    return cert_java
+            cert_class.unlink()
+        if javac:
+            args = (javac, "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
+            subprocess.run(args, check=False)
+    return cert_class if cert_class.exists() else cert_java
 
 
 def get_apksigner_jar() -> str:
