@@ -256,8 +256,19 @@ def parse_config_yaml(config_file: Path) -> Config:
     r"""
     Parse config YAML.
 
-    >>> parse_config_yaml(Path("test/config.yml"))
-    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.', repo_keyalias='myrepo', keystore='keystore.jks', keystorepass_cmd='cat .keystorepass', keypass_cmd='cat .keypass', apksigner_jar='/path/to/apksigner.jar', java_home='/usr/lib/jvm/java-11-openjdk-amd64')
+    >>> import dataclasses
+    >>> cfg = parse_config_yaml(Path("test/config.yml"))
+    >>> for field in dataclasses.fields(cfg):
+    ...     print(f"{field.name}={getattr(cfg, field.name)!r}")
+    repo_url='https://example.com/fdroid/repo'
+    repo_name='My Repo'
+    repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.'
+    repo_keyalias='myrepo'
+    keystore='/path/to/keystore.jks'
+    keystorepass_cmd='cat /path/to/.keystorepass'
+    keypass_cmd='cat /path/to/.keypass'
+    apksigner_jar='/path/to/apksigner.jar'
+    java_home='/usr/lib/jvm/java-11-openjdk-amd64'
 
     """
     with config_file.open(encoding="utf-8") as fh:

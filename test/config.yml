@@ -6,9 +6,9 @@ repo_description: >-
   application developers.
 
 repo_keyalias: myrepo
-keystore: keystore.jks
-keystorepass_cmd: cat .keystorepass
-keypass_cmd: cat .keypass
+keystore: /path/to/keystore.jks
+keystorepass_cmd: cat /path/to/.keystorepass
+keypass_cmd: cat /path/to/.keypass
 
 apksigner_jar: /path/to/apksigner.jar
 java_home: /usr/lib/jvm/java-11-openjdk-amd64
