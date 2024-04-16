@@ -107,6 +107,7 @@ class JavaStuff:
     java: str
     javac: Optional[str]
     apksigner_jar: str
+    apksigner_supported_schemes: List[int]
     cert_java: Path
 
     @classmethod
@@ -114,8 +115,10 @@ class JavaStuff:
         """Create from get_apksigner_jar(), get_java(), get_cert_java()."""
         java, javac = get_java()
         apksigner_jar = get_apksigner_jar()
+        schemes = get_apksigner_supported_schemes(apksigner_jar, java)
         cert_java = get_cert_java(apksigner_jar, javac)
-        return JavaStuff(java, javac, apksigner_jar, cert_java)
+        return JavaStuff(java=java, javac=javac, apksigner_jar=apksigner_jar,
+                         apksigner_supported_schemes=schemes, cert_java=cert_java)
 
 
 # FIXME
@@ -944,7 +947,7 @@ def sign_jar(cfg: Config, jar_file: Path, *, java_stuff: Optional[JavaStuff] = N
             "--ks-pass", "env:APKREPOTOOL_KS_PASS", "--key-pass", "env:APKREPOTOOL_KEY_PASS",
             "--min-sdk-version=23", "--max-sdk-version=24", "--v1-signing-enabled=true",
             "--v2-signing-enabled=false", "--v3-signing-enabled=false"]
-    if 4 in apksigner_supports(java_stuff):
+    if 4 in java_stuff.apksigner_supported_schemes:
         args.append("--v4-signing-enabled=false")
     args.append(str(jar_file))
     ks_pass, key_pass = get_passwords(cfg.keystorepass_cmd, cfg.keypass_cmd)
@@ -977,17 +980,15 @@ def get_passwords(keystorepass_cmd: str, keypass_cmd: str) -> Tuple[str, str]:
     return keystorepass_out.decode().strip("\r\n"), keypass_out.decode().strip("\r\n")
 
 
-def apksigner_supports(java_stuff: Optional[JavaStuff] = None) -> List[int]:
+def get_apksigner_supported_schemes(apksigner_jar: str, java: str) -> List[int]:
     r"""
-    Check what signatures apksigner supports.
+    Check what signature schemes apksigner supports.
 
-    >>> apksigner_supports()
+    >>> get_apksigner_supported_schemes(get_apksigner_jar(), get_java()[0])
     [1, 2, 3, 4]
 
     """
-    if not java_stuff:
-        java_stuff = JavaStuff.load()
-    args = (java_stuff.java, "-jar", java_stuff.apksigner_jar, "sign", "--help")
+    args = (java, "-jar", apksigner_jar, "sign", "--help")
     try:
         out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
     except subprocess.CalledProcessError as e:
