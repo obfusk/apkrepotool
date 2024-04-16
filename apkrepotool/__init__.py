@@ -48,7 +48,7 @@ CLEAN_LANG_ENV = dict(LC_ALL="C.UTF-8", LANG="", LANGUAGE="")
 SDK_ENV = ("ANDROID_HOME", "ANDROID_SDK", "ANDROID_SDK_ROOT")
 SDK_JAR = "lib/apksigner.jar"
 
-APKSIGNER_JAR = "/usr/share/java/apksigner.jar"
+APKSIGNER_JARS = ("/usr/share/java/apksigner.jar", "/usr/lib/android-sdk/build-tools/debian/apksigner.jar")
 CERT_JAVA_CODE = r"""
 import java.io.File;
 import java.io.IOException;
@@ -549,26 +549,27 @@ def get_cert_java(apksigner_jar: str, javac: Optional[str], *,
     return cert_class if cert_class.exists() else cert_java
 
 
-def get_apksigner_jar() -> str:
+def get_apksigner_jar(*, jars: Optional[List[str]] = None,
+                      env: Optional[Dict[str, str]] = None) -> str:
     r"""
     Find apksigner JAR using $ANDROID_HOME etc.
 
     >>> get_apksigner_jar()
     '/usr/share/java/apksigner.jar'
-    >>> os.environ["ANDROID_HOME"] = "test/fake-sdk"
-    >>> os.environ["APKSIGNER_JAR"] = "/nonexistent"
-    >>> get_apksigner_jar()
+    >>> get_apksigner_jar(jars=[], env=dict(ANDROID_HOME="test/fake-sdk"))
     'test/fake-sdk/build-tools/35.0.0-rc1/lib/apksigner.jar'
-    >>> os.environ["APKSIGNER_JAR"] = "test/fake-sdk/build-tools/31.0.0/lib/apksigner.jar"
-    >>> get_apksigner_jar()
+    >>> get_apksigner_jar(jars=["test/fake-sdk/build-tools/31.0.0/lib/apksigner.jar"])
     'test/fake-sdk/build-tools/31.0.0/lib/apksigner.jar'
-    >>> del os.environ["ANDROID_HOME"], os.environ["APKSIGNER_JAR"]
 
     """
-    if (jar := os.environ.get("APKSIGNER_JAR") or APKSIGNER_JAR) and os.path.exists(jar):
-        return jar
+    env_get = os.environ.get if env is None else env.get
+    if jars is None:
+        jars = [env_get("APKSIGNER_JAR") or "", *APKSIGNER_JARS]
+    for jar in jars:
+        if jar and os.path.exists(jar):
+            return jar
     for k in SDK_ENV:
-        if home := os.environ.get(k):
+        if home := env_get(k):
             tools = os.path.join(home, "build-tools")
             if os.path.exists(tools):
                 for vsn in sorted(os.listdir(tools), key=_vsn, reverse=True):
@@ -578,22 +579,22 @@ def get_apksigner_jar() -> str:
     raise Error("Could not locate apksigner JAR")
 
 
-def get_java() -> Tuple[str, Optional[str]]:
+def get_java(*, java_home: Optional[str] = None) -> Tuple[str, Optional[str]]:
     r"""
     Find java (and possibly javac) using $JAVA_HOME/$PATH.
 
     >>> get_java()
     ('/usr/bin/java', '/usr/bin/javac')
-    >>> os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-11-openjdk-amd64"
-    >>> get_java()
+    >>> get_java(java_home="/usr/lib/jvm/java-11-openjdk-amd64")
     ('/usr/lib/jvm/java-11-openjdk-amd64/bin/java', '/usr/lib/jvm/java-11-openjdk-amd64/bin/javac')
-    >>> del os.environ["JAVA_HOME"]
 
     """
     java = javac = None
-    if home := os.environ.get("JAVA_HOME"):
-        java = os.path.join(home, "bin/java")
-        javac = os.path.join(home, "bin/javac")
+    if not java_home:
+        java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        java = os.path.join(java_home, "bin/java")
+        javac = os.path.join(java_home, "bin/javac")
     if not (java and os.path.exists(java)):
         java = shutil.which("java")
         javac = shutil.which("javac")
