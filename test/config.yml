@@ -10,5 +10,6 @@ keystore: /path/to/keystore.jks
 keystorepass_cmd: cat /path/to/.keystorepass
 keypass_cmd: cat /path/to/.keypass
 
+apkrepotool_dir: /path/to/apkrepotool_dir
 apksigner_jar: /path/to/apksigner.jar
 java_home: /usr/lib/jvm/java-11-openjdk-amd64

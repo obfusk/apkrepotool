@@ -114,12 +114,13 @@ class JavaStuff:
     @classmethod
     def load(_cls, cfg: Optional[Config] = None) -> JavaStuff:
         """Create from get_apksigner_jar(), get_java(), get_cert_java()."""
-        java_home = cfg.java_home if cfg else None
+        art_dir = Path(cfg.apkrepotool_dir) if cfg and cfg.apkrepotool_dir else None
         jars = [cfg.apksigner_jar] if cfg and cfg.apksigner_jar else None
+        java_home = cfg.java_home if cfg else None
         java, javac = get_java(java_home=java_home)
         apksigner_jar = get_apksigner_jar(jars=jars)
         schemes = get_apksigner_supported_schemes(apksigner_jar, java)
-        cert_java = get_cert_java(apksigner_jar, javac)
+        cert_java = get_cert_java(apksigner_jar, javac, apkrepotool_dir=art_dir)
         return JavaStuff(java=java, javac=javac, apksigner_jar=apksigner_jar,
                          apksigner_supported_schemes=schemes, cert_java=cert_java)
 
@@ -185,6 +186,7 @@ class Config:
     keystore: str
     keystorepass_cmd: str
     keypass_cmd: str
+    apkrepotool_dir: Optional[str]
     apksigner_jar: Optional[str]
     java_home: Optional[str]
 
@@ -267,6 +269,7 @@ def parse_config_yaml(config_file: Path) -> Config:
     keystore='/path/to/keystore.jks'
     keystorepass_cmd='cat /path/to/.keystorepass'
     keypass_cmd='cat /path/to/.keypass'
+    apkrepotool_dir='/path/to/apkrepotool_dir'
     apksigner_jar='/path/to/apksigner.jar'
     java_home='/usr/lib/jvm/java-11-openjdk-amd64'
 
@@ -278,8 +281,8 @@ def parse_config_yaml(config_file: Path) -> Config:
             repo_url=data["repo_url"], repo_name=data["repo_name"],
             repo_description=data["repo_description"], repo_keyalias=data["repo_keyalias"],
             keystore=data["keystore"], keystorepass_cmd=data["keystorepass_cmd"],
-            keypass_cmd=data["keypass_cmd"], apksigner_jar=data.get("apksigner_jar"),
-            java_home=data.get("java_home"))
+            keypass_cmd=data["keypass_cmd"], apkrepotool_dir=data.get("apkrepotool_dir"),
+            apksigner_jar=data.get("apksigner_jar"), java_home=data.get("java_home"))
 
 
 # FIXME

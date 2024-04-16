@@ -118,12 +118,24 @@ Processing 'metadata/me.hackerchick.catima.yml'...
 ### config.yml
 
 ```yaml
+# repo information
 repo_url: https://example.com/fdroid/repo
 repo_name: My Repo
 repo_description: >-
   This is a repository of apps to be used with an F-Droid-compatible client.
   Applications in this repository are official binaries built by the original
   application developers.
+
+# signing config
+repo_keyalias: myrepo
+keystore: /path/to/keystore.jks
+keystorepass_cmd: cat /path/to/.keystorepass
+keypass_cmd: cat /path/to/.keypass
+
+# optional settings
+apkrepotool_dir: /path/to/apkrepotool_dir
+apksigner_jar: /path/to/apksigner.jar
+java_home: /usr/lib/jvm/java-11-openjdk-amd64
 ```
 
 ### metadata/me.hackerchick.catima.yml
