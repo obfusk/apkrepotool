@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+import zipfile
 
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -100,6 +101,23 @@ class SigError(Error):
     """Signature (verification) error."""
 
 
+@dataclass(frozen=True)
+class JavaStuff:
+    """Java Stuff."""
+    java: str
+    javac: Optional[str]
+    apksigner_jar: str
+    cert_java: Path
+
+    @classmethod
+    def load(_cls) -> JavaStuff:
+        """Create from get_apksigner_jar(), get_java(), get_cert_java()."""
+        java, javac = get_java()
+        apksigner_jar = get_apksigner_jar()
+        cert_java = get_cert_java(apksigner_jar, javac)
+        return JavaStuff(java, javac, apksigner_jar, cert_java)
+
+
 # FIXME
 @dataclass(frozen=True)
 class App:
@@ -157,11 +175,10 @@ class Config:
     repo_url: str
     repo_name: str
     repo_description: str
-    # repo_keyalias: str
-    # keystore: str
-    # keystorepass: str
-    # keypass: str
-    # keydname: str
+    repo_keyalias: str
+    keystore: str
+    keystorepass_cmd: str
+    keypass_cmd: str
 
 
 # FIXME
@@ -232,14 +249,16 @@ def parse_config_yaml(config_file: Path) -> Config:
     Parse config YAML.
 
     >>> parse_config_yaml(Path("test/config.yml"))
-    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.')
+    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.', repo_keyalias='myrepo', keystore='keystore.jks', keystorepass_cmd='cat .keystorepass', keypass_cmd='cat .keypass')
 
     """
     with config_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
         return Config(repo_url=data["repo_url"], repo_name=data["repo_name"],
-                      repo_description=data["repo_description"])
+                      repo_description=data["repo_description"],
+                      repo_keyalias=data["repo_keyalias"], keystore=data["keystore"],
+                      keystorepass_cmd=data["keystorepass_cmd"], keypass_cmd=data["keypass_cmd"])
 
 
 # FIXME
@@ -332,7 +351,7 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
 
 
 # FIXME
-def get_apk_info(apkfile: Path, added: int = 0) -> Apk:
+def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuff] = None) -> Apk:
     r"""
     Get APK info.
 
@@ -350,7 +369,7 @@ def get_apk_info(apkfile: Path, added: int = 0) -> Apk:
 
     """
     size = apkfile.stat().st_size
-    certs, _ = get_signing_certs(apkfile)
+    certs, _ = get_signing_certs(apkfile, java_stuff=java_stuff)
     fingerprints = [hashlib.sha256(cert).hexdigest() for cert in certs]
     sig = hashlib.md5(binascii.hexlify(certs[0])).hexdigest()
     return Apk(filename=str(apkfile), size=size, sha256=get_sha256(apkfile),
@@ -432,7 +451,8 @@ def get_sha256(file: Path) -> str:
     return sha.hexdigest()
 
 
-def get_signing_certs(apkfile: Path) -> Tuple[List[bytes], Dict[str, bool]]:
+def get_signing_certs(apkfile: Path, *, java_stuff: Optional[JavaStuff] = None) \
+        -> Tuple[List[bytes], Dict[str, bool]]:
     r"""
     Get APK signing key certificates using apksigner JAR.
 
@@ -446,16 +466,15 @@ def get_signing_certs(apkfile: Path) -> Tuple[List[bytes], Dict[str, bool]]:
     {'v1': True, 'v2': True, 'v3': True}
 
     """
-    java, javac = get_java()
-    apksigner_jar = get_apksigner_jar()
-    cert_java = get_cert_java(apksigner_jar, javac)
-    if cert_java.suffix == ".java":
-        cert_arg = str(cert_java)
-        classpath = apksigner_jar
+    if not java_stuff:
+        java_stuff = JavaStuff.load()
+    if java_stuff.cert_java.suffix == ".java":
+        cert_arg = str(java_stuff.cert_java)
+        classpath = java_stuff.apksigner_jar
     else:
-        cert_arg = cert_java.stem
-        classpath = f"{cert_java.parent}:{apksigner_jar}"
-    args = (java, "-classpath", classpath, cert_arg, str(apkfile))
+        cert_arg = java_stuff.cert_java.stem
+        classpath = f"{java_stuff.cert_java.parent}:{java_stuff.apksigner_jar}"
+    args = (java_stuff.java, "-classpath", classpath, cert_arg, str(apkfile))
     try:
         out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
     except subprocess.CalledProcessError as e:
@@ -892,6 +911,96 @@ def save_timestamps(parent_dir: Path, timestamps: Dict[str, int]) -> None:
         fh.write("\n")
 
 
+def sign_index(repo_dir: Path, cfg: Config, *, verbose: int = 0,
+               java_stuff: Optional[JavaStuff] = None) -> None:
+    """Sign index."""
+    index_v1 = repo_dir / "index-v1.json"
+    entry = repo_dir / "entry.json"
+    if verbose:
+        print("Signing index-v1.jar...")
+    create_and_sign_jar(cfg, index_v1, index_v1.with_suffix(".jar"), java_stuff=java_stuff)
+    if verbose:
+        print("Signing entry.jar...")
+    create_and_sign_jar(cfg, entry, entry.with_suffix(".jar"), java_stuff=java_stuff)
+
+
+def create_and_sign_jar(cfg: Config, json_file: Path, jar_file: Path, *,
+                        java_stuff: Optional[JavaStuff] = None) -> None:
+    """Create & sign JAR."""
+    with json_file.open("rb") as fhi:
+        with zipfile.ZipFile(str(jar_file), "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            with zf.open(json_file.name, "w") as fho:
+                while data := fhi.read(4096):
+                    fho.write(data)
+    sign_jar(cfg, jar_file, java_stuff=java_stuff)
+
+
+def sign_jar(cfg: Config, jar_file: Path, *, java_stuff: Optional[JavaStuff] = None) -> None:
+    """Sign JAR w/ apksigner."""
+    if not java_stuff:
+        java_stuff = JavaStuff.load()
+    args = [java_stuff.java, "-jar", java_stuff.apksigner_jar, "sign",
+            "--ks", cfg.keystore, "--ks-key-alias", cfg.repo_keyalias,
+            "--ks-pass", "env:APKREPOTOOL_KS_PASS", "--key-pass", "env:APKREPOTOOL_KEY_PASS",
+            "--min-sdk-version=23", "--max-sdk-version=24", "--v1-signing-enabled=true",
+            "--v2-signing-enabled=false", "--v3-signing-enabled=false"]
+    if 4 in apksigner_supports(java_stuff):
+        args.append("--v4-signing-enabled=false")
+    args.append(str(jar_file))
+    ks_pass, key_pass = get_passwords(cfg.keystorepass_cmd, cfg.keypass_cmd)
+    env = dict(APKREPOTOOL_KS_PASS=ks_pass, APKREPOTOOL_KEY_PASS=key_pass)
+    try:
+        out, err = run_command(*args, env=env)
+    except subprocess.CalledProcessError as e:
+        raise Error(f"Signing with apksigner failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run apksigner: {e}") from e
+
+
+def get_passwords(keystorepass_cmd: str, keypass_cmd: str) -> Tuple[str, str]:
+    r"""
+    Get passwords by running keystorepass_cmd & keypass_cmd.
+
+    >>> get_passwords("echo foo", "echo bar")
+    ('foo', 'bar')
+
+    """
+    try:
+        keystorepass_out = subprocess.run(keystorepass_cmd, check=True, shell=True,
+                                          stdout=subprocess.PIPE).stdout
+        keypass_out = subprocess.run(keypass_cmd, check=True, shell=True,
+                                     stdout=subprocess.PIPE).stdout
+    except subprocess.CalledProcessError as e:
+        raise Error(f"Password command failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run password command: {e}") from e
+    return keystorepass_out.decode().strip("\r\n"), keypass_out.decode().strip("\r\n")
+
+
+def apksigner_supports(java_stuff: Optional[JavaStuff] = None) -> List[int]:
+    r"""
+    Check what signatures apksigner supports.
+
+    >>> apksigner_supports()
+    [1, 2, 3, 4]
+
+    """
+    if not java_stuff:
+        java_stuff = JavaStuff.load()
+    args = (java_stuff.java, "-jar", java_stuff.apksigner_jar, "sign", "--help")
+    try:
+        out = subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
+    except subprocess.CalledProcessError as e:
+        raise Error(f"Getting apksigner help failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run apksigner: {e}") from e
+    versions = []
+    for v in (1, 2, 3, 4):
+        if f"--v{v}-signing-enabled".encode() in out:
+            versions.append(v)
+    return versions
+
+
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
                 merged: bool = False, verbose: bool = False) -> Tuple[str, str]:
     r"""
@@ -939,8 +1048,10 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 
 
 # FIXME
+# FIXME: --pretty, --no-sign
 def do_update(verbose: int = 0) -> None:
     """Update index."""
+    java_stuff = JavaStuff.load()
     cur_dir = Path(".")
     meta_dir = Path("metadata")
     repo_dir = Path("repo")
@@ -962,7 +1073,7 @@ def do_update(verbose: int = 0) -> None:
             print(f"Processing {str(apkfile)!r}...")
         if apkfile.name not in timestamps:
             timestamps[apkfile.name] = timestamp
-        apk = get_apk_info(apkfile, timestamps[apkfile.name])
+        apk = get_apk_info(apkfile, timestamps[apkfile.name], java_stuff=java_stuff)
         man = apk.manifest
         if verbose:
             print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
@@ -1009,6 +1120,7 @@ def do_update(verbose: int = 0) -> None:
     make_index(repo_dir=repo_dir, apps=apps, apks=apks, meta=meta, cfg=cfg,
                localised_cfgs=localised_cfgs, added=added, updated=updated,
                ts=timestamp, verbose=verbose)
+    sign_index(repo_dir, cfg, verbose=verbose, java_stuff=java_stuff)
 
 
 # FIXME
