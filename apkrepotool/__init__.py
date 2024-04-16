@@ -112,10 +112,12 @@ class JavaStuff:
     cert_java: Path
 
     @classmethod
-    def load(_cls) -> JavaStuff:
+    def load(_cls, cfg: Optional[Config] = None) -> JavaStuff:
         """Create from get_apksigner_jar(), get_java(), get_cert_java()."""
-        java, javac = get_java()
-        apksigner_jar = get_apksigner_jar()
+        java_home = cfg.java_home if cfg else None
+        jars = [cfg.apksigner_jar] if cfg and cfg.apksigner_jar else None
+        java, javac = get_java(java_home=java_home)
+        apksigner_jar = get_apksigner_jar(jars=jars)
         schemes = get_apksigner_supported_schemes(apksigner_jar, java)
         cert_java = get_cert_java(apksigner_jar, javac)
         return JavaStuff(java=java, javac=javac, apksigner_jar=apksigner_jar,
@@ -183,6 +185,8 @@ class Config:
     keystore: str
     keystorepass_cmd: str
     keypass_cmd: str
+    apksigner_jar: Optional[str]
+    java_home: Optional[str]
 
 
 # FIXME
@@ -253,16 +257,18 @@ def parse_config_yaml(config_file: Path) -> Config:
     Parse config YAML.
 
     >>> parse_config_yaml(Path("test/config.yml"))
-    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.', repo_keyalias='myrepo', keystore='keystore.jks', keystorepass_cmd='cat .keystorepass', keypass_cmd='cat .keypass')
+    Config(repo_url='https://example.com/fdroid/repo', repo_name='My Repo', repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.', repo_keyalias='myrepo', keystore='keystore.jks', keystorepass_cmd='cat .keystorepass', keypass_cmd='cat .keypass', apksigner_jar='/path/to/apksigner.jar', java_home='/usr/lib/jvm/java-11-openjdk-amd64')
 
     """
     with config_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
-        return Config(repo_url=data["repo_url"], repo_name=data["repo_name"],
-                      repo_description=data["repo_description"],
-                      repo_keyalias=data["repo_keyalias"], keystore=data["keystore"],
-                      keystorepass_cmd=data["keystorepass_cmd"], keypass_cmd=data["keypass_cmd"])
+        return Config(
+            repo_url=data["repo_url"], repo_name=data["repo_name"],
+            repo_description=data["repo_description"], repo_keyalias=data["repo_keyalias"],
+            keystore=data["keystore"], keystorepass_cmd=data["keystorepass_cmd"],
+            keypass_cmd=data["keypass_cmd"], apksigner_jar=data.get("apksigner_jar"),
+            java_home=data.get("java_home"))
 
 
 # FIXME
@@ -1063,15 +1069,12 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 # FIXME: --pretty, --no-sign
 def do_update(verbose: int = 0) -> None:
     """Update index."""
-    java_stuff = JavaStuff.load()
-    cur_dir = Path(".")
-    meta_dir = Path("metadata")
-    repo_dir = Path("repo")
-    config_file = Path("config.yml")
-    config_dir = Path("config")
+    cur_dir, meta_dir, repo_dir = Path("."), Path("metadata"), Path("repo")
+    config_file, config_dir = Path("config.yml"), Path("config")
     timestamp = int(time.time()) * 1000
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
+    java_stuff = JavaStuff.load(cfg=cfg)
     apks: Dict[str, Dict[int, Apk]] = {}
     apps, meta, aask, one_signer_only = [], {}, {}, {}
     times: Dict[str, Set[int]] = {}
