@@ -154,9 +154,9 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] `timestamps.json`
 * [x] keystore config (no passwds in yml)
 * [x] signed & compressed JARs
+* [x] `diffs/*.json`
 * [ ] icon
 * [ ] README
-* [ ] `diffs/*.json`
 * [ ] `cache/apks.json`
 * [ ] CI
 * [ ] hashed graphics files

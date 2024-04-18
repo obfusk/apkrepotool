@@ -642,43 +642,59 @@ def _vsn(v: str) -> Tuple[int, ...]:
 
 
 # FIXME
-# FIXME: signed .jar, diff/*.json
 # FIXME: --pretty?
-def make_index(*, repo_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
+def make_index(*, repo_dir: Path, cache_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
                localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
                updated: Dict[str, int], ts: int, pretty: bool = False, verbose: int = 0) -> None:
     """Create & write v1 & v2 index."""
+    for p in (repo_dir / "diff", cache_dir / "repo"):
+        p.mkdir(parents=True, exist_ok=True)
     v1_data = v1_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg,
                        added=added, updated=updated)
     v2_data = v2_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg, localised_cfgs=localised_cfgs,
                        added=added, updated=updated)
-    if verbose:
-        print("Writing index-v1.json...")
-    with (repo_dir / "index-v1.json").open("w", encoding="utf-8") as fh:
-        if pretty:
-            json.dump(v1_data, fh, indent=2)
-            fh.write("\n")
-        else:
-            json.dump(v1_data, fh)
-    if verbose:
-        print("Writing index-v2.json...")
-    with (repo_dir / "index-v2.json").open("w", encoding="utf-8") as fh:
-        if pretty:
-            json.dump(v2_data, fh, ensure_ascii=False, indent=2)
-            fh.write("\n")
-        else:
-            json.dump(v2_data, fh, ensure_ascii=False)
-    diffs: Dict[int, Tuple[FileInfo, int]] = {}     # FIXME
+    save_json(repo_dir / "index-v1.json", v1_data, ensure_ascii=True, pretty=pretty, verbose=verbose)
+    save_json(repo_dir / "index-v2.json", v2_data, pretty=pretty, verbose=verbose)
+    diffs = make_diffs(repo_dir, cache_dir, v2_data, pretty=pretty)
     entry = v2_entry(ts, len(apps), FileInfo.from_path(repo_dir / "index-v2.json"), diffs)
-    if verbose:
-        print("Writing entry.json...")
-    with (repo_dir / "entry.json").open("w", encoding="utf-8") as fh:
-        if pretty:
-            json.dump(entry, fh, ensure_ascii=False, indent=2)
-            fh.write("\n")
-        else:
-            json.dump(entry, fh, ensure_ascii=False)
+    save_json(repo_dir / "entry.json", entry, verbose=verbose, pretty=pretty)
+    update_cache(cache_dir, v2_data, ts, pretty=pretty, verbose=verbose)
+
+
+def make_diffs(repo_dir: Path, cache_dir: Path, v2_data: Dict[str, Any], *,
+               pretty: bool = False, verbose: int = 0) -> Dict[int, Tuple[FileInfo, int]]:
+    """Make v2 diffs."""
+    for p in sorted((repo_dir / "diff").glob("*.json")):
+        p.unlink()
+    diffs = {}
+    for p in sorted((cache_dir / "repo").glob("*.json"), key=lambda p: int(p.stem))[-10:]:
+        t = int(p.stem)
+        d = repo_dir / "diff" / f"{t}.json"
+        diff = index_diff(load_json(p), v2_data)
+        save_json(d, diff, pretty=pretty, verbose=verbose)
+        diffs[t] = (FileInfo.from_path(d), len(diff.get("packages", [])))
+    return diffs
+
+
+# FIXME: APK cache
+def update_cache(cache_dir: Path, v2_data: Dict[str, Any], ts: int, *,
+                 pretty: bool = False, verbose: int = 0) -> None:
+    """Update cache."""
+    save_json(cache_dir / "repo" / f"{ts}.json", v2_data, pretty=pretty, verbose=verbose)
+    for p in sorted((cache_dir / "repo").glob("*.json"), key=lambda p: int(p.stem))[:-10]:
+        p.unlink()
+
+
+def index_diff(source: Any, target: Any) -> Any:
+    """Create diff of index data."""
+    if not (isinstance(source, dict) and isinstance(target, dict)):
+        return target
+    deleted = {k: None for k in source if k not in target}
+    added = {k: v for k, v in target.items() if k not in source}
+    updated = {k: index_diff(source[k], v) for k, v in target.items()
+               if k in source and source[k] != v}
+    return {**deleted, **added, **updated}
 
 
 # FIXME
@@ -915,7 +931,6 @@ def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any
     return data
 
 
-# FIXME: diffs
 def v2_entry(ts: int, packages: int, index_info: FileInfo,
              diffs: Dict[int, Tuple[FileInfo, int]]) -> Dict[str, Any]:
     """Create v2 entry data."""
@@ -942,17 +957,33 @@ def v2_entry(ts: int, packages: int, index_info: FileInfo,
 def load_timestamps(parent_dir: Path) -> Dict[str, int]:
     """Load timestamps.json."""
     try:
-        with (parent_dir / "timestamps.json").open(encoding="utf-8") as fh:
-            return json.load(fh)    # type: ignore[no-any-return]
+        return load_json(parent_dir / "timestamps.json")
     except FileNotFoundError:
         return {}
 
 
 def save_timestamps(parent_dir: Path, timestamps: Dict[str, int]) -> None:
     """Save timestamps.json."""
-    with (parent_dir / "timestamps.json").open("w", encoding="utf-8") as fh:
-        json.dump(timestamps, fh, indent=2)
-        fh.write("\n")
+    save_json(parent_dir / "timestamps.json", timestamps, pretty=True)
+
+
+def load_json(path: Path) -> Dict[str, Any]:
+    """Load JSON data."""
+    with path.open(encoding="utf-8") as fh:
+        return json.load(fh)    # type: ignore[no-any-return]
+
+
+def save_json(path: Path, data: Dict[str, Any], *, ensure_ascii: bool = False,
+              pretty: bool = False, verbose: int = 0) -> None:
+    """Save JSON data."""
+    if verbose:
+        print(f"Writing {path.name}...")
+    with path.open("w", encoding="utf-8") as fh:
+        if pretty:
+            json.dump(data, fh, ensure_ascii=ensure_ascii, indent=2)
+            fh.write("\n")
+        else:
+            json.dump(data, fh, ensure_ascii=ensure_ascii)
 
 
 def sign_index(repo_dir: Path, cfg: Config, *, verbose: int = 0,
@@ -1093,8 +1124,8 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 # FIXME: --pretty, --no-sign
 def do_update(verbose: int = 0) -> None:
     """Update index."""
-    cur_dir, meta_dir, repo_dir = Path("."), Path("metadata"), Path("repo")
-    config_file, config_dir = Path("config.yml"), Path("config")
+    paths = (".", "metadata", "repo", "cache", "config.yml", "config")
+    cur_dir, meta_dir, repo_dir, cache_dir, config_file, config_dir = [Path(p) for p in paths]
     timestamp = int(time.time()) * 1000
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
@@ -1156,8 +1187,8 @@ def do_update(verbose: int = 0) -> None:
                     raise Error(f"Unallowed signer for {appid!r}: {apk.signing_keys[0]}")
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
-    make_index(repo_dir=repo_dir, apps=apps, apks=apks, meta=meta, cfg=cfg,
-               localised_cfgs=localised_cfgs, added=added, updated=updated,
+    make_index(repo_dir=repo_dir, cache_dir=cache_dir, apps=apps, apks=apks, meta=meta,
+               cfg=cfg, localised_cfgs=localised_cfgs, added=added, updated=updated,
                ts=timestamp, verbose=verbose)
     sign_index(repo_dir, cfg, verbose=verbose, java_stuff=java_stuff)
 
