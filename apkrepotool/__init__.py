@@ -656,7 +656,7 @@ def make_index(*, repo_dir: Path, cache_dir: Path, apps: List[App], apks: Dict[s
                        added=added, updated=updated)
     save_json(repo_dir / "index-v1.json", v1_data, ensure_ascii=True, pretty=pretty, verbose=verbose)
     save_json(repo_dir / "index-v2.json", v2_data, pretty=pretty, verbose=verbose)
-    diffs = make_diffs(repo_dir, cache_dir, v2_data, pretty=pretty)
+    diffs = make_diffs(repo_dir, cache_dir, v2_data, pretty=pretty, verbose=verbose)
     entry = v2_entry(ts, len(apps), FileInfo.from_path(repo_dir / "index-v2.json"), diffs)
     save_json(repo_dir / "entry.json", entry, verbose=verbose, pretty=pretty)
     update_cache(cache_dir, v2_data, ts, pretty=pretty, verbose=verbose)
@@ -672,7 +672,7 @@ def make_diffs(repo_dir: Path, cache_dir: Path, v2_data: Dict[str, Any], *,
         t = int(p.stem)
         d = repo_dir / "diff" / f"{t}.json"
         diff = index_diff(load_json(p), v2_data)
-        save_json(d, diff, pretty=pretty, verbose=verbose)
+        save_json(d, diff, name=f"diff/{t}.json", pretty=pretty, verbose=verbose)
         diffs[t] = (FileInfo.from_path(d), len(diff.get("packages", [])))
     return diffs
 
@@ -681,7 +681,8 @@ def make_diffs(repo_dir: Path, cache_dir: Path, v2_data: Dict[str, Any], *,
 def update_cache(cache_dir: Path, v2_data: Dict[str, Any], ts: int, *,
                  pretty: bool = False, verbose: int = 0) -> None:
     """Update cache."""
-    save_json(cache_dir / "repo" / f"{ts}.json", v2_data, pretty=pretty, verbose=verbose)
+    save_json(cache_dir / "repo" / f"{ts}.json", v2_data,
+              name=f"{cache_dir.name}/repo/{ts}.json", pretty=pretty, verbose=verbose)
     for p in sorted((cache_dir / "repo").glob("*.json"), key=lambda p: int(p.stem))[:-10]:
         p.unlink()
 
@@ -974,10 +975,10 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 
 def save_json(path: Path, data: Dict[str, Any], *, ensure_ascii: bool = False,
-              pretty: bool = False, verbose: int = 0) -> None:
+              name: Optional[str] = None, pretty: bool = False, verbose: int = 0) -> None:
     """Save JSON data."""
     if verbose:
-        print(f"Writing {path.name}...")
+        print(f"Writing {name or path.name}...")
     with path.open("w", encoding="utf-8") as fh:
         if pretty:
             json.dump(data, fh, ensure_ascii=ensure_ascii, indent=2)
