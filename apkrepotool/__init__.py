@@ -726,10 +726,10 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
 
 # FIXME
 # FIXME: hashed graphics files
-def v1_localised(app_meta: Dict[str, Metadata], current_version_code: int) -> Dict[str, Any]:
+def v1_localised(loc: Dict[str, Metadata], current_version_code: int) -> Dict[str, Any]:
     """Create v1 index app localised data."""
     data = {}
-    for locale, meta in app_meta.items():
+    for locale, meta in loc.items():
         entry = {
             "description": meta.full_description,
             "featureGraphic": meta.feature_graphic_file.path.name if meta.feature_graphic_file else None,
@@ -751,7 +751,8 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
     """Create v1 index packages data."""
     data: Dict[str, List[Any]] = {}
     for appid, versions in sorted(apks.items(), key=lambda kv: kv[0]):
-        for apk in versions.values():
+        for apk in sorted(versions.values(), key=lambda apk: apk.manifest.version_code,
+                          reverse=True):
             man = apk.manifest
             if appid not in data:
                 data[appid] = []
@@ -860,17 +861,18 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
                 },
                 "preferredSigner": signer,
             },
-            "versions": v2_versions(apks[app.appid]),
+            "versions": v2_versions(apks[app.appid], loc),
         }
     return data
 
 
 # FIXME
+# FIXME: nativecode, antiFeatures, ...
 # FIXME: sort by group, signer, version_code
-def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
+def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any]:
     """Create v2 index app versions data."""
     data = {}
-    for apk in apks.values():
+    for apk in sorted(apks.values(), key=lambda apk: apk.manifest.version_code, reverse=True):
         man = apk.manifest
         features = [{"name": f.name} for f in man.features]
         permissions = [
@@ -889,11 +891,10 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
             "signer": {"sha256": apk.signing_keys},
             "usesPermission": permissions,
         }
-        if not manifest["features"]:
-            del manifest["features"]
-        if not manifest["usesPermission"]:
-            del manifest["usesPermission"]
-        data[apk.sha256] = {
+        for k in ("features", "usesPermission"):
+            if not manifest[k]:
+                del manifest[k]
+        entry = {
             "added": apk.added,
             "file": {
                 "name": f"/{PurePath(apk.filename).name}",
@@ -901,7 +902,16 @@ def v2_versions(apks: Dict[int, Apk]) -> Dict[str, Any]:
                 "size": apk.size,
             },
             "manifest": manifest,
+            "antiFeatures": {},                     # FIXME
+            "whatsNew": {
+                locale: m.changelogs[man.version_code]
+                for locale, m in loc.items() if man.version_code in m.changelogs
+            },
         }
+        for k in ("antiFeatures", "whatsNew"):
+            if not entry[k]:
+                del entry[k]
+        data[apk.sha256] = entry
     return data
 
 
