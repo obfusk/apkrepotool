@@ -167,6 +167,7 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [ ] proper `repro-apk` `binres` release & dependency
 * [ ] JSON schemas
 * [ ] HSM support
+* [ ] `apkcache.json` -> `timestamps.json` script
 * [ ] ...
 
 ## Installing
