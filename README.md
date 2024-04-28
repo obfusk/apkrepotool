@@ -156,6 +156,7 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] signed & compressed JARs
 * [x] `diffs/*.json`
 * [x] CI
+* [ ] categories etc.
 * [ ] icon
 * [ ] README
 * [ ] `cache/apks.json`
