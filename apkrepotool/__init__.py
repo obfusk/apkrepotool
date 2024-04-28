@@ -131,6 +131,7 @@ class App:
     """App."""
     name: str
     appid: str
+    categories: List[str]
     allowed_apk_signing_keys: List[str]
     one_signer_only: bool
     current_version_code: int
@@ -231,7 +232,7 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     Parse recipe YAML.
 
     >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
-    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], one_signer_only=True, current_version_code=10, current_version_name=None)
+    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', categories=['Development'], allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], one_signer_only=True, current_version_code=10, current_version_name=None)
 
     """
     appid = recipe_file.stem
@@ -239,17 +240,18 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
         name = data["Name"]
+        cats = data.get("Categories", [])
         if "AllowedAPKSigningKeys" in data:
             if isinstance(data["AllowedAPKSigningKeys"], str):
-                allowed_apk_signing_keys = [data["AllowedAPKSigningKeys"]]
+                aask = [data["AllowedAPKSigningKeys"]]
             else:
-                allowed_apk_signing_keys = data["AllowedAPKSigningKeys"]
+                aask = data["AllowedAPKSigningKeys"]
         else:
-            allowed_apk_signing_keys = []
+            aask = []
         oso = data.get("OneSignerOnly", True)
         cvc = data.get("CurrentVersionCode", latest_version_code)
         cvn = data.get("CurrentVersion")
-        return App(name=name, appid=appid, allowed_apk_signing_keys=allowed_apk_signing_keys,
+        return App(name=name, appid=appid, categories=cats, allowed_apk_signing_keys=aask,
                    one_signer_only=oso, current_version_code=cvc, current_version_name=cvn)
 
 
@@ -728,6 +730,7 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
     for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
             "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
+            "categories": app.categories,
             "suggestedVersionName": app.current_version_name,
             "suggestedVersionCode": str(app.current_version_code),
             "license": "Unknown",                   # FIXME
@@ -839,6 +842,7 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
         data[app.appid] = {
             "metadata": {
                 "added": added[app.appid],
+                "categories": app.categories,
                 "lastUpdated": updated[app.appid],
                 "featureGraphic": {
                     locale: {
