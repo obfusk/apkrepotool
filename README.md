@@ -156,19 +156,23 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] signed & compressed JARs
 * [x] `diffs/*.json`
 * [x] CI
-* [ ] categories etc.
 * [ ] icon
 * [ ] README
+* [ ] repo fingerprint, QR, ...
+* [ ] `targetSdk=minSdk` if unset, `uses-permission-sdk-23`, ...
+* [ ] aask opt-out
 * [ ] `cache/apks.json`
 * [ ] hashed graphics files
 * [ ] advanced options (e.g. mirrors)
 * [ ] more metadata (license, links, ...)
 * [ ] get (XML) icons from APK
-* [ ] transparency log
+* [ ] transparency log (2x) + signature blocklist
+* [ ] hooks for checks
 * [ ] proper `repro-apk` `binres` release & dependency
 * [ ] JSON schemas
 * [ ] HSM support
 * [ ] `apkcache.json` -> `timestamps.json` script
+* [ ] "API" ?!
 * [ ] ...
 
 ## Installing
