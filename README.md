@@ -156,15 +156,16 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] signed & compressed JARs
 * [x] `diffs/*.json`
 * [x] CI
+* [ ] hashed graphics files
 * [ ] icon
 * [ ] README
 * [ ] repo fingerprint, QR, ...
 * [ ] `targetSdk=minSdk` if unset, `uses-permission-sdk-23`, ...
 * [ ] aask opt-out
 * [ ] `cache/apks.json`
-* [ ] hashed graphics files
 * [ ] advanced options (e.g. mirrors)
 * [ ] more metadata (license, links, ...)
+* [ ] CI/testing: small test repo in submodule
 * [ ] get (XML) icons from APK
 * [ ] transparency log (2x) + signature blocklist
 * [ ] hooks for checks
