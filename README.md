@@ -12,7 +12,7 @@
 -->
 
 <p align="center">
-  <img src="logo.svg" alt="apkrepotool logo" width="160" />
+  <img src="icon.svg" alt="apkrepotool logo" width="160" />
 </p>
 
 # apkrepotool - manage APK repos
