@@ -652,10 +652,14 @@ def make_index(*, repo_dir: Path, cache_dir: Path, apps: List[App], apks: Dict[s
     """Create & write v1 & v2 index."""
     for p in (repo_dir / "diff", cache_dir / "repo"):
         p.mkdir(parents=True, exist_ok=True)
+    icon_path = repo_dir / "icons" / "icon.png"
+    if not icon_path.exists():
+        raise Error(f"Missing icon file: {str(icon_path)!r}")
+    icon = FileInfo.from_path(icon_path)
     v1_data = v1_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg,
                        added=added, updated=updated)
     v2_data = v2_index(apps=apps, apks=apks, meta=meta, ts=ts, cfg=cfg, localised_cfgs=localised_cfgs,
-                       added=added, updated=updated)
+                       added=added, updated=updated, icon=icon)
     save_json(repo_dir / "index-v1.json", v1_data, ensure_ascii=True, pretty=pretty, verbose=verbose)
     save_json(repo_dir / "index-v2.json", v2_data, pretty=pretty, verbose=verbose)
     diffs = make_diffs(repo_dir, cache_dir, v2_data, pretty=pretty, verbose=verbose)
@@ -804,7 +808,7 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
 def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
              meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
              localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
-             updated: Dict[str, int]) -> Dict[str, Any]:
+             updated: Dict[str, int], icon: FileInfo) -> Dict[str, Any]:
     """Create v2 index data."""
     if DEFAULT_LOCALE not in localised_cfgs:
         localised_cfgs = localised_cfgs.copy()
@@ -816,9 +820,9 @@ def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
             "description": {k: v.repo_description for k, v in localised_cfgs.items()},
             "icon": {
                 k: {
-                    "name": "/icons/icon.png",      # FIXME
-                    "sha256": "FIXME",              # FIXME
-                    "size": 0,                      # FIXME
+                    "name": "/icons/icon.png",
+                    "sha256": icon.sha256,
+                    "size": icon.size,
                 } for k, v in localised_cfgs.items()
             },
             "address": cfg.repo_url,
