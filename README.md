@@ -11,6 +11,10 @@
 
 -->
 
+<p align="center">
+  <img src="logo.svg" alt="apkrepotool logo" width="160" />
+</p>
+
 # apkrepotool - manage APK repos
 
 `apkrepotool` is a tool for managing APK repositories that can be used with an
