@@ -14,6 +14,7 @@ fastlane metadata & image files.
 
 from __future__ import annotations
 
+import base64
 import binascii
 import hashlib
 import json
@@ -333,8 +334,8 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
     short_description='short description'
     full_description='full description\n'
     changelogs={10: 'changelog for version code 10\n'}
-    icon_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/icon.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
-    feature_graphic_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/featureGraphic.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    icon_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/icon_47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+    feature_graphic_file=FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/featureGraphic_47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
     phone_screenshots_files:
       FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/phoneScreenshots/01.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
       FileInfo(path=PosixPath('test/repo/android.appsecurity.cts.tinyapp/en-US/phoneScreenshots/02.png'), size=0, sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
@@ -361,8 +362,8 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
             icon_path = images_dir / "icon.png"
             fg_path = images_dir / "featureGraphic.png"
             ps_dir = images_dir / "phoneScreenshots"
-            icon_file = FileInfo.from_path(icon_path) if icon_path.exists() else None
-            fg_file = FileInfo.from_path(fg_path) if fg_path.exists() else None
+            icon_file = hashed_image(icon_path) if icon_path.exists() else None
+            fg_file = hashed_image(fg_path) if fg_path.exists() else None
             if ps_dir.exists():
                 ps_files = [FileInfo.from_path(p) for p in sorted(ps_dir.glob("*.png"))]
             else:
@@ -749,7 +750,6 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
 
 
 # FIXME
-# FIXME: hashed graphics files
 def v1_localised(loc: Dict[str, Metadata], current_version_code: int) -> Dict[str, Any]:
     """Create v1 index app localised data."""
     data = {}
@@ -833,7 +833,6 @@ def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
 
 
 # FIXME
-# FIXME: hashed graphics files, sha256 & size
 def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
                 meta: Dict[str, Dict[str, Metadata]], added: Dict[str, int],
                 updated: Dict[str, int]) -> Dict[str, Any]:
@@ -1081,6 +1080,19 @@ def get_apksigner_supported_schemes(apksigner_jar: str, java: str) -> List[int]:
         if f"--v{v}-signing-enabled".encode() in out:
             versions.append(v)
     return versions
+
+
+def hashed_image(path: Path) -> FileInfo:
+    """
+    Copy to path with base64-encoded SHA-256 hash; e.g. icon.png to
+    icon_47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=.png.
+    """
+    info = FileInfo.from_path(path)
+    b64hash = base64.b64encode(binascii.unhexlify(info.sha256), b"-_").decode()
+    hashed_path = path.with_name(f"{path.stem}_{b64hash}{path.suffix}")
+    if not hashed_path.exists():
+        shutil.copy2(path, hashed_path)
+    return FileInfo(hashed_path, info.size, info.sha256)
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
