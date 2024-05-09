@@ -422,13 +422,15 @@ def get_manifest(apkfile: Path) -> Manifest:
     permissions=[]
 
     """
-    def get(elem: ET.Element, attr: str, android: bool = True) -> Optional[str]:
+    def get(elem: ET.Element, attr: str, default: Optional[Any] = None,
+            android: bool = True) -> Optional[str]:
         if android:
             attr = "{" + binres.SCHEMA_ANDROID + "}" + attr
-        return elem.get(attr)
+        return elem.get(attr, default)
 
-    def get_str(elem: ET.Element, attr: str, android: bool = True) -> str:
-        value = get(elem, attr, android=android)
+    def get_str(elem: ET.Element, attr: str, default: Optional[str] = None,
+                android: bool = True) -> str:
+        value = get(elem, attr, default=default, android=android)
         if not isinstance(value, str):
             raise TypeError("AndroidManifest.xml element type mismatch")
         return value
@@ -453,12 +455,13 @@ def get_manifest(apkfile: Path) -> Manifest:
             permissions.append(Permission(
                 name=get_str(elem, "name"), minSdkVersion=minSdkVersion,
                 maxSdkVersion=maxSdkVersion))
+    min_sdk = int(get_str(uses_sdk, "minSdkVersion", default="1"))
+    target_sdk = int(get_str(uses_sdk, "targetSdkVersion", default=str(min_sdk)))
     return Manifest(
         appid=get_str(root, "package", android=False),
         version_code=int(get_str(root, "versionCode")),
         version_name=get_str(root, "versionName"),
-        min_sdk=int(get_str(uses_sdk, "minSdkVersion")),
-        target_sdk=int(get_str(uses_sdk, "targetSdkVersion")),
+        min_sdk=min_sdk, target_sdk=target_sdk,
         features=sorted(features, key=lambda f: f.name),
         permissions=sorted(permissions, key=lambda f: f.name))
 

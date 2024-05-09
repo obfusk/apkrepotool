@@ -185,9 +185,10 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] CI
 * [x] icon
 * [x] hashed graphics files
+* [x] `targetSdk=minSdk` if unset
+* [ ] `uses-permission-sdk-23`, ...
 * [ ] README
 * [ ] repo fingerprint, QR, ...
-* [ ] `targetSdk=minSdk` if unset, `uses-permission-sdk-23`, ...
 * [ ] aask opt-out
 * [ ] `cache/apks.json`
 * [ ] advanced options (e.g. mirrors)
