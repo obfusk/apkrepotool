@@ -192,6 +192,7 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [ ] `cache/apks.json`
 * [ ] advanced options (e.g. mirrors)
 * [ ] more metadata (license, links, ...)
+* [ ] `--continue-on-errors` (skip those APKs)
 * [ ] CI/testing: small test repo in submodule
 * [ ] get (XML) icons from APK
 * [ ] transparency log (2x) + signature blocklist
