@@ -130,13 +130,23 @@ class JavaStuff:
 @dataclass(frozen=True)
 class App:
     """App."""
-    name: str
     appid: str
-    categories: List[str]
+    name: str
     allowed_apk_signing_keys: List[str]
-    one_signer_only: bool
+    categories: List[str]
     current_version_code: int
     current_version_name: Optional[str]
+    one_signer_only: bool
+    author_email: Optional[str]
+    author_name: Optional[str]
+    author_website_url: Optional[str]
+    changelog_url: Optional[str]
+    donate_url: Optional[str]
+    issue_tracker_url: Optional[str]
+    license: Optional[str]
+    source_code_url: Optional[str]
+    translation_url: Optional[str]
+    website_url: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -232,16 +242,33 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     r"""
     Parse recipe YAML.
 
-    >>> parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
-    App(name='TestApp', appid='android.appsecurity.cts.tinyapp', categories=['Development'], allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8'], one_signer_only=True, current_version_code=10, current_version_name=None)
+    >>> import dataclasses
+    >>> app = parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
+    >>> for field in dataclasses.fields(app):
+    ...     print(f"{field.name}={getattr(app, field.name)!r}")
+    appid='android.appsecurity.cts.tinyapp'
+    name='TestApp'
+    allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
+    categories=['Development']
+    current_version_code=10
+    current_version_name='1.0'
+    one_signer_only=True
+    author_email='google@example.com'
+    author_name='Google'
+    author_website_url='https://authorwebsite.example.com/'
+    changelog_url='https://git.example.com/test/app/blob/HEAD/CHANGELOG.md'
+    donate_url='https://donate.example.com/'
+    issue_tracker_url='https://git.example.com/test/app/issues'
+    license='Apache-2.0'
+    source_code_url='https://git.example.com/test/app'
+    translation_url='https://weblate.example.com/projects/test/app'
+    website_url='https://website.example.com/'
 
     """
     appid = recipe_file.stem
     with recipe_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
-        name = data["Name"]
-        cats = data.get("Categories", [])
         if "AllowedAPKSigningKeys" in data:
             if isinstance(data["AllowedAPKSigningKeys"], str):
                 aask = [data["AllowedAPKSigningKeys"]]
@@ -249,11 +276,22 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
                 aask = data["AllowedAPKSigningKeys"]
         else:
             aask = []
-        oso = data.get("OneSignerOnly", True)
-        cvc = data.get("CurrentVersionCode", latest_version_code)
-        cvn = data.get("CurrentVersion")
-        return App(name=name, appid=appid, categories=cats, allowed_apk_signing_keys=aask,
-                   one_signer_only=oso, current_version_code=cvc, current_version_name=cvn)
+        return App(
+            appid=appid, name=data["Name"], allowed_apk_signing_keys=aask,
+            categories=data.get("Categories", []),
+            current_version_code=data.get("CurrentVersionCode", latest_version_code),
+            current_version_name=data.get("CurrentVersion"),
+            one_signer_only=data.get("OneSignerOnly", True),
+            author_email=data.get("AuthorEmail"),
+            author_name=data.get("AuthorName"),
+            author_website_url=data.get("AuthorWebSite"),
+            changelog_url=data.get("Changelog"),
+            donate_url=data.get("Donate"),
+            issue_tracker_url=data.get("IssueTracker"),
+            license=data.get("License"),
+            source_code_url=data.get("SourceCode"),
+            translation_url=data.get("Translation"),
+            website_url=data.get("WebSite"))
 
 
 # FIXME
@@ -738,11 +776,20 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
     for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
             "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
+            "authorEmail": app.author_email,
+            "authorName": app.author_name,
+            "authorWebSite": app.author_website_url,
             "categories": app.categories,
+            "changelog": app.changelog_url,
             "suggestedVersionName": app.current_version_name,
             "suggestedVersionCode": str(app.current_version_code),
-            "license": "Unknown",                   # FIXME
+            "donate": app.donate_url,
+            "issueTracker": app.issue_tracker_url,
+            "license": app.license or "Unknown",
             "name": app.name,
+            "sourceCode": app.source_code_url,
+            "translation": app.translation_url,
+            "webSite": app.website_url,
             "added": added[app.appid],
             "packageName": app.appid,
             "lastUpdated": updated[app.appid],
@@ -850,49 +897,60 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
         loc = meta[app.appid]
         mv = max(apks[app.appid].keys())
         signer = apks[app.appid][mv].signing_keys[0]    # FIXME: sort by ...
-        data[app.appid] = {
-            "metadata": {
-                "added": added[app.appid],
-                "categories": app.categories,
-                "lastUpdated": updated[app.appid],
-                "featureGraphic": {
-                    locale: {
-                        "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.path.name}",
-                        "sha256": m.feature_graphic_file.sha256,
-                        "size": m.feature_graphic_file.size,
-                    } for locale, m in loc.items() if m.feature_graphic_file
-                },
-                "screenshots": {
-                    "phone": {
-                        locale: [
-                            {
-                                "name": f"/{app.appid}/{locale}/phoneScreenshots/{file.path.name}",
-                                "sha256": file.sha256,
-                                "size": file.size,
-                            } for file in m.phone_screenshots_files
-                        ] for locale, m in loc.items() if m.phone_screenshots_files
-                    },
-                },
-                "name": {
-                    DEFAULT_LOCALE: app.name,       # FIXME
-                },
-                "summary": {
-                    locale: m.short_description
-                    for locale, m in loc.items() if m.short_description is not None
-                },
-                "description": {
-                    locale: m.full_description
-                    for locale, m in loc.items() if m.full_description is not None
-                },
-                "icon": {
-                    locale: {
-                        "name": f"/{app.appid}/{locale}/{m.icon_file.path.name}",
-                        "sha256": m.icon_file.sha256,
-                        "size": m.icon_file.size,
-                    } for locale, m in loc.items() if m.icon_file
-                },
-                "preferredSigner": signer,
+        metadata = {
+            "added": added[app.appid],
+            "categories": app.categories,
+            "changelog": app.changelog_url,
+            "issueTracker": app.issue_tracker_url,
+            "lastUpdated": updated[app.appid],
+            "license": app.license,
+            "sourceCode": app.source_code_url,
+            "translation": app.translation_url,
+            "webSite": app.website_url,
+            "featureGraphic": {
+                locale: {
+                    "name": f"/{app.appid}/{locale}/{m.feature_graphic_file.path.name}",
+                    "sha256": m.feature_graphic_file.sha256,
+                    "size": m.feature_graphic_file.size,
+                } for locale, m in loc.items() if m.feature_graphic_file
             },
+            "screenshots": {
+                "phone": {
+                    locale: [
+                        {
+                            "name": f"/{app.appid}/{locale}/phoneScreenshots/{file.path.name}",
+                            "sha256": file.sha256,
+                            "size": file.size,
+                        } for file in m.phone_screenshots_files
+                    ] for locale, m in loc.items() if m.phone_screenshots_files
+                },
+            },
+            "authorEmail": app.author_email,
+            "authorName": app.author_name,
+            "authorWebSite": app.author_website_url,
+            "name": {
+                DEFAULT_LOCALE: app.name,                               # FIXME
+            },
+            "summary": {
+                locale: m.short_description
+                for locale, m in loc.items() if m.short_description is not None
+            },
+            "description": {
+                locale: m.full_description
+                for locale, m in loc.items() if m.full_description is not None
+            },
+            "donate": [app.donate_url] if app.donate_url else None,     # FIXME
+            "icon": {
+                locale: {
+                    "name": f"/{app.appid}/{locale}/{m.icon_file.path.name}",
+                    "sha256": m.icon_file.sha256,
+                    "size": m.icon_file.size,
+                } for locale, m in loc.items() if m.icon_file
+            },
+            "preferredSigner": signer,
+        }
+        data[app.appid] = {
+            "metadata": {k: v for k, v in metadata.items() if v is not None},
             "versions": v2_versions(apks[app.appid], loc),
         }
     return data
