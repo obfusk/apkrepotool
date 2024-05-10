@@ -1192,7 +1192,6 @@ def do_update(verbose: int = 0) -> None:
         if man.appid not in times:
             times[man.appid] = set()
         times[man.appid].add(timestamps[apkfile.name])
-    save_timestamps(cur_dir, timestamps)
     for recipe in recipes:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
@@ -1207,25 +1206,29 @@ def do_update(verbose: int = 0) -> None:
             if verbose > 1:
                 print(f"  Metadata locales: {list(meta[appid].keys())}.")
         if not app.allowed_apk_signing_keys:
-            print(f"Warning: no allowed signing keys specified for {appid!r}", file=sys.stderr)
+            raise Error(f"No allowed signing keys specified for {appid!r} "
+                        "(use 'any' to allow any signing key)")
+        if app.allowed_apk_signing_keys == ["any"]:
+            print(f"Warning: any signing key allowed for {appid!r}.", file=sys.stderr)
         aask[appid] = app.allowed_apk_signing_keys
         one_signer_only[appid] = app.one_signer_only
         apps.append(app)
     for appid, versions in apks.items():
         for apk in versions.values():
+            filename, signers = apk.filename, aask[appid]
             if len(apk.signing_keys) > 1:
                 if one_signer_only[appid]:
-                    raise Error(f"Multiple signers for {appid!r}: {apk.signing_keys}")
-                print(f"Warning: multiple signers for {appid!r}: {apk.signing_keys}", file=sys.stderr)
-            if signers := aask[appid]:
-                if apk.signing_keys[0] not in signers:
-                    raise Error(f"Unallowed signer for {appid!r}: {apk.signing_keys[0]}")
+                    raise Error(f"Multiple signers for {filename!r}: {apk.signing_keys}")
+                print(f"Warning: multiple signers for {filename!r}: {apk.signing_keys}.", file=sys.stderr)
+            if signers != ["any"] and apk.signing_keys[0] not in signers:
+                raise Error(f"Unallowed signer for {filename!r}: {apk.signing_keys[0]}")
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
     make_index(repo_dir=repo_dir, cache_dir=cache_dir, apps=apps, apks=apks, meta=meta,
                cfg=cfg, localised_cfgs=localised_cfgs, added=added, updated=updated,
                ts=timestamp, verbose=verbose)
     sign_index(repo_dir, cfg, verbose=verbose, java_stuff=java_stuff)
+    save_timestamps(cur_dir, timestamps)
 
 
 # FIXME

@@ -187,7 +187,7 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] hashed graphics files
 * [x] `targetSdk=minSdk` if unset
 * [x] `uses-permission-sdk-23`, ...
-* [ ] aask opt-out
+* [x] aask opt-out
 * [ ] more metadata (license, links, ...)
 * [ ] README
 * [ ] `--continue-on-errors` (skip those APKs)
