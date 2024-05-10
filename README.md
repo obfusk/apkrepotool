@@ -186,20 +186,20 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] icon
 * [x] hashed graphics files
 * [x] `targetSdk=minSdk` if unset
-* [ ] `uses-permission-sdk-23`, ...
-* [ ] README
-* [ ] repo fingerprint, QR, ...
+* [x] `uses-permission-sdk-23`, ...
 * [ ] aask opt-out
-* [ ] `cache/apks.json`
-* [ ] advanced options (e.g. mirrors)
 * [ ] more metadata (license, links, ...)
+* [ ] README
 * [ ] `--continue-on-errors` (skip those APKs)
+* [ ] `cache/apks.json`
+* [ ] repo fingerprint, QR, ...
 * [ ] CI/testing: small test repo in submodule
-* [ ] get (XML) icons from APK
+* [ ] proper `repro-apk` `binres` release & dependency
+* [ ] advanced options (e.g. mirrors)
 * [ ] transparency log (2x) + signature blocklist
 * [ ] hooks for checks
-* [ ] proper `repro-apk` `binres` release & dependency
 * [ ] JSON schemas
+* [ ] get (XML) icons from APK
 * [ ] HSM support
 * [ ] `apkcache.json` -> `timestamps.json` script
 * [ ] "API" ?!

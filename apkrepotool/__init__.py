@@ -149,8 +149,8 @@ class Feature:
 class Permission:
     """AndroidManifest.xml uses-permission."""
     name: str
-    minSdkVersion: Optional[int]
-    maxSdkVersion: Optional[int]
+    min_sdk_version: Optional[int]
+    max_sdk_version: Optional[int]
 
 
 @dataclass(frozen=True)
@@ -449,12 +449,12 @@ def get_manifest(apkfile: Path) -> Manifest:
     permissions = []
     for k in ("uses-permission", "uses-permission-sdk-23"):
         for elem in root.iterfind(k):
-            minSdkVersion = 23 if k == "uses-permission-sdk-23" else None
+            min_sdk_version = 23 if k == "uses-permission-sdk-23" else None
             maxsv = get(elem, "maxSdkVersion")
-            maxSdkVersion = int(maxsv) if maxsv is not None else None
+            max_sdk_version = int(maxsv) if maxsv is not None else None
             permissions.append(Permission(
-                name=get_str(elem, "name"), minSdkVersion=minSdkVersion,
-                maxSdkVersion=maxSdkVersion))
+                name=get_str(elem, "name"), min_sdk_version=min_sdk_version,
+                max_sdk_version=max_sdk_version))
     min_sdk = int(get_str(uses_sdk, "minSdkVersion", default="1"))
     target_sdk = int(get_str(uses_sdk, "targetSdkVersion", default=str(min_sdk)))
     return Manifest(
@@ -796,7 +796,12 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
                 "size": apk.size,
                 "targetSdkVersion": man.target_sdk,
                 "uses-permission": [
-                    [p.name, p.maxSdkVersion] for p in man.permissions
+                    [p.name, p.max_sdk_version] for p in man.permissions
+                    if not p.min_sdk_version
+                ] or None,
+                "uses-permission-sdk-23": [
+                    [p.name, p.max_sdk_version] for p in man.permissions
+                    if p.min_sdk_version
                 ] or None,
                 "versionCode": man.version_code,
                 "versionName": man.version_name,
@@ -903,9 +908,14 @@ def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any
         man = apk.manifest
         features = [{"name": f.name} for f in man.features]
         permissions = [
-            {"name": p.name, "maxSdkVersion": p.maxSdkVersion}
-            if p.maxSdkVersion is not None else {"name": p.name}
-            for p in man.permissions
+            {"name": p.name, "maxSdkVersion": p.max_sdk_version}
+            if p.max_sdk_version is not None else {"name": p.name}
+            for p in man.permissions if not p.min_sdk_version
+        ]
+        permissions_sdk23 = [
+            {"name": p.name, "maxSdkVersion": p.max_sdk_version}
+            if p.max_sdk_version is not None else {"name": p.name}
+            for p in man.permissions if p.min_sdk_version
         ]
         manifest = {
             "versionName": man.version_name,
@@ -917,8 +927,9 @@ def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any
             },
             "signer": {"sha256": apk.signing_keys},
             "usesPermission": permissions,
+            "usesPermissionSdk23": permissions_sdk23,
         }
-        for k in ("features", "usesPermission"):
+        for k in ("features", "usesPermission", "usesPermissionSdk23"):
             if not manifest[k]:
                 del manifest[k]
         entry = {
