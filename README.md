@@ -189,6 +189,7 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 * [x] `uses-permission-sdk-23`, ...
 * [x] aask opt-out
 * [x] more metadata (license, links, ...)
+* [ ] AntiFeatures, ...
 * [ ] README
 * [ ] `--continue-on-errors` (skip those APKs)
 * [ ] `cache/apks.json`
