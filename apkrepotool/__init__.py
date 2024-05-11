@@ -133,6 +133,7 @@ class App:
     appid: str
     name: str
     allowed_apk_signing_keys: List[str]
+    anti_features: Dict[str, Dict[str, str]]
     categories: List[str]
     current_version_code: int
     current_version_name: Optional[str]
@@ -249,6 +250,7 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     appid='android.appsecurity.cts.tinyapp'
     name='TestApp'
     allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
+    anti_features={}
     categories=['Development']
     current_version_code=10
     current_version_name='1.0'
@@ -269,29 +271,29 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     with recipe_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
+        aask = []
+        anti_features: Dict[str, Dict[str, str]] = {}
         if "AllowedAPKSigningKeys" in data:
             if isinstance(data["AllowedAPKSigningKeys"], str):
                 aask = [data["AllowedAPKSigningKeys"]]
             else:
                 aask = data["AllowedAPKSigningKeys"]
-        else:
-            aask = []
+        if "AntiFeatures" in data:
+            if isinstance(data["AntiFeatures"], list):
+                anti_features = {k: {} for k in data["AntiFeatures"]}
+            else:
+                anti_features = data["AntiFeatures"]
         return App(
             appid=appid, name=data["Name"], allowed_apk_signing_keys=aask,
-            categories=data.get("Categories", []),
+            anti_features=anti_features, categories=data.get("Categories", []),
             current_version_code=data.get("CurrentVersionCode", latest_version_code),
             current_version_name=data.get("CurrentVersion"),
             one_signer_only=data.get("OneSignerOnly", True),
-            author_email=data.get("AuthorEmail"),
-            author_name=data.get("AuthorName"),
-            author_website_url=data.get("AuthorWebSite"),
-            changelog_url=data.get("Changelog"),
-            donate_url=data.get("Donate"),
-            issue_tracker_url=data.get("IssueTracker"),
-            license=data.get("License"),
-            source_code_url=data.get("SourceCode"),
-            translation_url=data.get("Translation"),
-            website_url=data.get("WebSite"))
+            author_email=data.get("AuthorEmail"), author_name=data.get("AuthorName"),
+            author_website_url=data.get("AuthorWebSite"), changelog_url=data.get("Changelog"),
+            donate_url=data.get("Donate"), issue_tracker_url=data.get("IssueTracker"),
+            license=data.get("License"), source_code_url=data.get("SourceCode"),
+            translation_url=data.get("Translation"), website_url=data.get("WebSite"))
 
 
 # FIXME
@@ -776,6 +778,7 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
     for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
             "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
+            "antiFeatures": list(app.anti_features.keys()) or None,
             "authorEmail": app.author_email,
             "authorName": app.author_name,
             "authorWebSite": app.author_website_url,
@@ -951,15 +954,15 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
         }
         data[app.appid] = {
             "metadata": {k: v for k, v in metadata.items() if v is not None},
-            "versions": v2_versions(apks[app.appid], loc),
+            "versions": v2_versions(app, apks[app.appid], loc),
         }
     return data
 
 
 # FIXME
-# FIXME: nativecode, antiFeatures, ...
+# FIXME: nativecode, ...
 # FIXME: sort by group, signer, version_code
-def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any]:
+def v2_versions(app: App, apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any]:
     """Create v2 index app versions data."""
     data = {}
     for apk in sorted(apks.values(), key=lambda apk: apk.manifest.version_code, reverse=True):
@@ -998,7 +1001,7 @@ def v2_versions(apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any
                 "size": apk.size,
             },
             "manifest": manifest,
-            "antiFeatures": {},                     # FIXME
+            "antiFeatures": app.anti_features,
             "whatsNew": {
                 locale: m.changelogs[man.version_code]
                 for locale, m in loc.items() if man.version_code in m.changelogs
