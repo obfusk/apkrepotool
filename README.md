@@ -168,48 +168,30 @@ java_home: /usr/lib/jvm/java-11-openjdk-amd64
 ```yaml
 Categories:
   - Money
+License: GPL-3.0-or-later
+AuthorName: Sylvia van Os
+AuthorEmail: catima.g9ex3@hackerchick.me
+AuthorWebSite: https://sylviavanos.nl
+WebSite: https://catima.app/
+SourceCode: https://github.com/CatimaLoyalty/Android
+IssueTracker: https://github.com/CatimaLoyalty/Android/issues
+Translation: https://hosted.weblate.org/projects/catima/catima/
+Changelog: https://github.com/CatimaLoyalty/Android/blob/HEAD/CHANGELOG.md
+Donate: https://paypal.me/sylviavanos
+
 Name: Catima
+AutoName: Catima
+
+RepoType: git
+Repo: https://github.com/CatimaLoyalty/Android.git
+
 AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af62c67eb3
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 2.29.0
+CurrentVersionCode: 134
 ```
-
-## TODO
-
-* [x] `index-v1.json`
-* [x] `index-v2.json`
-* [x] `entry.json`
-* [x] `-vv` (show files processed?)
-* [x] `timestamps.json`
-* [x] keystore config (no passwds in yml)
-* [x] signed & compressed JARs
-* [x] `diffs/*.json`
-* [x] CI
-* [x] icon
-* [x] hashed graphics files
-* [x] `targetSdk=minSdk` if unset
-* [x] `uses-permission-sdk-23`, ...
-* [x] aask opt-out
-* [x] more metadata (license, links, ...)
-* [x] AntiFeatures
-* [ ] README
-* [ ] nativecode etc.
-* [ ] `--continue-on-errors` (skip those APKs)
-* [ ] `cache/apks.json`
-* [ ] repo fingerprint, QR, ...
-* [ ] CI/testing: small test repo in submodule
-* [ ] proper `repro-apk` `binres` release & dependency
-* [ ] categories in index
-* [ ] RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ...
-* [ ] per-APK AntiFeatures
-* [ ] advanced options (e.g. mirrors)
-* [ ] transparency log (2x) + signature blocklist
-* [ ] hooks for checks
-* [ ] JSON schemas
-* [ ] get app name from APK
-* [ ] get (XML) icons from APK
-* [ ] HSM support
-* [ ] `apkcache.json` -> `timestamps.json` script
-* [ ] "API" ?!
-* [ ] ...
 
 ## Installing
 
