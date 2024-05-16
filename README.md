@@ -1,15 +1,11 @@
 <!-- SPDX-FileCopyrightText: 2024 FC (Fay) Stegerman <flx@obfusk.net> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 
-<!--
-
 [![GitHub Release](https://img.shields.io/github/release/obfusk/apkrepotool.svg?logo=github)](https://github.com/obfusk/apkrepotool/releases)
 [![PyPI Version](https://img.shields.io/pypi/v/apkrepotool.svg)](https://pypi.python.org/pypi/apkrepotool)
 [![Python Versions](https://img.shields.io/pypi/pyversions/apkrepotool.svg)](https://pypi.python.org/pypi/apkrepotool)
 [![CI](https://github.com/obfusk/apkrepotool/actions/workflows/ci.yml/badge.svg)](https://github.com/obfusk/apkrepotool/actions/workflows/ci.yml)
 [![AGPLv3+](https://img.shields.io/badge/license-AGPLv3+-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
-
--->
 
 <p align="center">
   <img src="icon.svg" alt="apkrepotool logo" width="160" />
@@ -223,15 +219,11 @@ CurrentVersionCode: 134
 
 ## Installing
 
-<!--
-
 ### Using pip
 
 ```bash
 $ pip install apkrepotool
 ```
-
--->
 
 ### From git
 

@@ -1,4 +1,4 @@
-## v0.1.0
+## v0.0.1
 
 * [x] `index-v1.json`
 * [x] `index-v2.json`
@@ -17,7 +17,7 @@
 * [x] more metadata (license, links, ...)
 * [x] AntiFeatures
 * [x] proper `repro-apk` `binres` release & dependency
-* [ ] README
+* [x] README
 
 ## next
 

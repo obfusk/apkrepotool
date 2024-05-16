@@ -1,0 +1,3 @@
+v0.0.1
+
+• first alpha release with minimum functionality for a simple repo.

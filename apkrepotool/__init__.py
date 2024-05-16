@@ -34,7 +34,7 @@ import repro_apk.binres as binres       # FIXME: needs proper release & dependen
 
 from ruamel.yaml import YAML
 
-__version__ = "0.0.0"
+__version__ = "0.0.1"
 NAME = "apkrepotool"
 
 if os.environ.get("APKREPOTOOL_DIR"):
