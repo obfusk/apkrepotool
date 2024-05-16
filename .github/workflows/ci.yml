@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y openjdk-11-jdk-headless apksigner
           sudo apt-get remove -y temurin-{8,11,17,21}-jdk
           python3 -m pip install --upgrade pip
-          python3 -m pip install git+https://github.com/obfusk/reproducible-apk-tools.git@binres
+          python3 -m pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.2.6
           python3 -m pip install flake8 pylint
       - name: Install mypy
         run: python3 -m pip install mypy

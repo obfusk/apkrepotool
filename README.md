@@ -227,16 +227,13 @@ $ git pull --rebase
 
 ## Dependencies
 
-Python >= 3.8 + `click` + `ruamel.yaml` + `repro-apk`.
-
-NB: AXML support isn't released yet, so for now you need the `binres` branch
-from git for `repro-apk`.
+Python >= 3.8 + `click` + `ruamel.yaml` + `repro-apk` >= 0.2.6.
 
 ### Debian/Ubuntu
 
 ```bash
 $ apt install python3-pip python3-click python3-ruamel.yaml
-$ pip install git+https://github.com/obfusk/reproducible-apk-tools.git@binres-20240211
+$ pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.2.6
 ```
 
 ## License

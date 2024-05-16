@@ -44,6 +44,5 @@ setuptools.setup(
     packages=["apkrepotool"],
     package_data=dict(apkrepotool=["py.typed"]),
     python_requires=">=3.8",
-    # FIXME: repro-apk >= <to be released version w/ binres>
-    install_requires=["click>=6.0", "repro-apk", "ruamel.yaml"],
+    install_requires=["click>=6.0", "repro-apk>=0.2.6", "ruamel.yaml"],
 )

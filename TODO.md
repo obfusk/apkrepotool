@@ -16,8 +16,8 @@
 * [x] aask opt-out
 * [x] more metadata (license, links, ...)
 * [x] AntiFeatures
+* [x] proper `repro-apk` `binres` release & dependency
 * [ ] README
-* [ ] proper `repro-apk` `binres` release & dependency
 
 ## next
 
