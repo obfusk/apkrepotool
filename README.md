@@ -22,13 +22,42 @@ F-Droid-compatible client; specifically, it generates v1 & v2 index JSON & JAR
 files from a compatible directory structure with the required YAML metadata and
 fastlane metadata & image files.
 
-## Initial Setup
+## Setup
 
-FIXME
+See "Keystore & Icon" below for how to generate a keystore and use a generic
+icon if you don't have one of your own; see "Configuration Files" for
+configuration file examples; see "Directory Structure" for where all the
+necessary files go.
+
+### Requirements: Apps, Configuration, Metadata
+
+* keystore (to sign the index) -- keep this safe and backed up!
+* PNG icon (for the repository itself)
+* YAML config file (`config.yml`) specifying the repo details and paths to the keystore etc.
+* per-app YAML files (`metadata/my.app.id.yml`) specifying details for each app
+* fastlane-compatible metadata files (`full_description.txt` etc.)
+* fastlane-compatible image files (`icon.png`, `featureGraphic.png`, etc.)
+* APK files for each app
+
+### Requirements: Software
+
+* Python, `apkrepotool` and its dependencies (e.g. `pip install apkrepotool`)
+* OpenJDK (e.g. `apt install openjdk-11-jdk-headless`)
+* `apksigner` JAR file (e.g. `apt install apksigner` or e.g.
+  `/path/to/Android/Sdk/build-tools/34.0.0/lib/apksigner.jar` from an installed
+  Android SDK)
+
+### Keystore & Icon
 
 NB: you probably don't want to accidentally commit your keystore and/or
 passwords to git!  And please make sure you pay attention to the key properties
 since you can't change the signing key later.
+
+NB: this is an example; replace `myrepo` with something more appropriate, use
+sensible values for the distinguished name etc., make sure the key size and
+validity are appropriate for your use.
+
+See "Configuration Files" below for options for storing the keystore password.
 
 ```bash
 $ mkdir myrepo
@@ -141,6 +170,11 @@ Signing entry.jar...
 ## Configuration Files
 
 ### config.yml
+
+NB: this example uses `cat` and simply stores the passwords unencrypted in
+plaintext file -- do not commit these to git! -- but you can easily use
+something like `gpg -d /path/to/.keystorepass.gpg` to decrypt an encrypted
+password file instead.
 
 ```yaml
 # repo information
