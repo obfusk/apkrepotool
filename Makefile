@@ -3,7 +3,7 @@ PYTHON  ?= python3
 
 export PYTHONWARNINGS := default
 
-.PHONY: all install test test-cli doctest lint lint-extra clean cleanup
+.PHONY: all install test test-cli test-repo doctest lint lint-extra clean cleanup
 
 all:
 
@@ -15,6 +15,44 @@ test: test-cli doctest lint lint-extra
 test-cli:
 	# TODO
 	apkrepotool --version
+
+test-repo:
+	cd test/test-repo && $(MAKE) clean && apkrepotool update -v
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/entry-1strun.json \
+	     | sed -r '/^ *"(timestamp|sha256)":/d' ) \
+	  <( jq < test/test-repo/repo/entry.json \
+	     | sed -r '/^ *"(timestamp|sha256)":/d' )
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/index-v1.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
+	  <( jq < test/test-repo/repo/index-v1.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/index-v2.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
+	  <( jq < test/test-repo/repo/index-v2.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
+	cd test/test-repo && apkrepotool update -v
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/entry-2ndrun.json \
+	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
+	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
+		      -e 's!diff/[0-9]+!diff/TIMESTAMP!' ) \
+	  <( jq < test/test-repo/repo/entry.json \
+	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
+	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
+		      -e 's!diff/[0-9]+!diff/TIMESTAMP!' )
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/index-v1.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
+	  <( jq < test/test-repo/repo/index-v1.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/index-v2.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
+	  <( jq < test/test-repo/repo/index-v2.json \
+	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
 
 doctest:
 	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py
