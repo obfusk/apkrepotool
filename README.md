@@ -18,6 +18,10 @@ F-Droid-compatible client; specifically, it generates v1 & v2 index JSON & JAR
 files from a compatible directory structure with the required YAML metadata and
 fastlane metadata & image files.
 
+NB: **work in progress**; currently this is a first *alpha* release with
+*minimum functionality for a simple repo*.  Testing, feedback, bug reports, and
+feature requests are very welcome :)
+
 ## Setup
 
 See "Keystore & Icon" below for how to generate a keystore and use a generic
