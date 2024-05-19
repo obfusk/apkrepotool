@@ -46,6 +46,7 @@
 
 ## extensions
 
+* [ ] RSS feed for announcements (e.g. app removals)
 * [ ] exodus
 * [ ] VT
 * [ ] rbtlog

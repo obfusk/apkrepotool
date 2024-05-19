@@ -51,11 +51,12 @@ necessary files go.
 
 NB: you probably don't want to accidentally commit your keystore and/or
 passwords to git!  And please make sure you pay attention to the key properties
-since you can't change the signing key later.
+since you can't change the signing key later.  You don't need to fill in your
+full name but you'll want to avoid having fields set to "Unknown" and use e.g.
+your handle/username so people can identify the key as belonging to you.
 
-NB: this is an example; replace `myrepo` with something more appropriate, use
-sensible values for the distinguished name etc., make sure the key size and
-validity are appropriate for your use.
+NB: this is an example; replace `myrepo` with something more appropriate and
+make sure the key size and validity are appropriate for your use.
 
 See "Configuration Files" below for options for storing the keystore password.
 
@@ -66,6 +67,7 @@ $ keytool -genkey -v -keystore keystore.jks -alias myrepo -keyalg RSA -keysize 4
 $ mkdir -p repo/icons
 $ wget -O repo/icons/icon.png -- https://github.com/obfusk/apkrepotool/raw/master/icon.png
 $ vim config.yml
+[...]
 ```
 
 ## CLI
@@ -172,7 +174,7 @@ Signing entry.jar...
 ### config.yml
 
 NB: this example uses `cat` and simply stores the passwords unencrypted in
-plaintext file -- do not commit these to git! -- but you can easily use
+plaintext files -- do not commit these to git! -- but you can easily use
 something like `gpg -d /path/to/.keystorepass.gpg` to decrypt an encrypted
 password file instead.
 
