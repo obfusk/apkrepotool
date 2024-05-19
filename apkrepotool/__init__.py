@@ -174,6 +174,7 @@ class Manifest:
     target_sdk: int
     features: List[Feature]
     permissions: List[Permission]
+    abis: List[str]
 
 
 @dataclass(frozen=True)
@@ -460,6 +461,7 @@ def get_manifest(apkfile: Path) -> Manifest:
     target_sdk=23
     features=[]
     permissions=[]
+    abis=['armeabi']
 
     """
     def get(elem: ET.Element, attr: str, default: Optional[Any] = None,
@@ -497,13 +499,17 @@ def get_manifest(apkfile: Path) -> Manifest:
                 max_sdk_version=max_sdk_version))
     min_sdk = int(get_str(uses_sdk, "minSdkVersion", default="1"))
     target_sdk = int(get_str(uses_sdk, "targetSdkVersion", default=str(min_sdk)))
+    with zipfile.ZipFile(apkfile) as zf:
+        abis = sorted(set(n.split("/")[1] for n in zf.namelist()
+                          if n.startswith("lib/") and n.endswith(".so")))
     return Manifest(
         appid=get_str(root, "package", android=False),
         version_code=int(get_str(root, "versionCode")),
         version_name=get_str(root, "versionName"),
         min_sdk=min_sdk, target_sdk=target_sdk,
         features=sorted(features, key=lambda f: f.name),
-        permissions=sorted(permissions, key=lambda f: f.name))
+        permissions=sorted(permissions, key=lambda f: f.name),
+        abis=abis)
 
 
 def get_sha256(file: Path) -> str:
@@ -777,8 +783,8 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
     # index is historically sorted by name
     for app in sorted(apps, key=lambda app: app.name.upper()):
         entry = {
-            "allowedAPKSigningKeys": app.allowed_apk_signing_keys or None,
-            "antiFeatures": list(app.anti_features.keys()) or None,
+            "allowedAPKSigningKeys": app.allowed_apk_signing_keys,
+            "antiFeatures": list(app.anti_features.keys()),
             "authorEmail": app.author_email,
             "authorName": app.author_name,
             "authorWebSite": app.author_website_url,
@@ -798,7 +804,7 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
             "lastUpdated": updated[app.appid],
             "localized": v1_localised(meta[app.appid], app.current_version_code),
         }
-        data.append({k: v for k, v in entry.items() if v is not None})
+        data.append({k: v for k, v in entry.items() if v})
     return data
 
 
@@ -814,11 +820,11 @@ def v1_localised(loc: Dict[str, Metadata], current_version_code: int) -> Dict[st
             "name": meta.title,
             "phoneScreenshots": [
                 file.path.name for file in meta.phone_screenshots_files
-            ] if meta.phone_screenshots_files else None,
+            ],
             "summary": meta.short_description,
             "whatsNew": meta.changelogs.get(current_version_code),
         }
-        data[locale] = {k: v for k, v in entry.items() if v is not None}
+        data[locale] = {k: v for k, v in entry.items() if v}
     return data
 
 
@@ -836,10 +842,11 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
             entry = {
                 "added": apk.added,
                 "apkName": PurePath(apk.filename).name,
-                "features": [f.name for f in man.features] or None,
+                "features": [f.name for f in man.features],
                 "hash": apk.sha256,
                 "hashType": "sha256",
                 "minSdkVersion": man.min_sdk,
+                "nativecode": man.abis,
                 "packageName": man.appid,
                 "sig": apk.fdroid_sig,
                 "signer": apk.signing_keys[0],
@@ -848,19 +855,20 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
                 "uses-permission": [
                     [p.name, p.max_sdk_version] for p in man.permissions
                     if not p.min_sdk_version
-                ] or None,
+                ],
                 "uses-permission-sdk-23": [
                     [p.name, p.max_sdk_version] for p in man.permissions
                     if p.min_sdk_version
-                ] or None,
+                ],
                 "versionCode": man.version_code,
                 "versionName": man.version_name,
             }
-            data[appid].append({k: v for k, v in entry.items() if v is not None})
+            data[appid].append({k: v for k, v in entry.items() if v})
     return data
 
 
 # FIXME
+# FIXME: categories
 # FIXME: mirrors etc.
 # FIXME: ensure localised config and regular one are identical if both exist
 def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
@@ -872,6 +880,7 @@ def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
         localised_cfgs = localised_cfgs.copy()
         localised_cfgs[DEFAULT_LOCALE] = LocalisedConfig(
             repo_name=cfg.repo_name, repo_description=cfg.repo_description)
+    categories = sorted(set().union(*(set(app.categories) for app in apps)))
     return {
         "repo": {
             "name": {k: v.repo_name for k, v in localised_cfgs.items()},
@@ -885,6 +894,7 @@ def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
             },
             "address": cfg.repo_url,
             "timestamp": ts,
+            "categories": {c: {"name": {DEFAULT_LOCALE: c}} for c in categories},
         },
         "packages": v2_packages(apps, apks, meta, added, updated),
     }
@@ -936,11 +946,11 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
             },
             "summary": {
                 locale: m.short_description
-                for locale, m in loc.items() if m.short_description is not None
+                for locale, m in loc.items() if m.short_description
             },
             "description": {
                 locale: m.full_description
-                for locale, m in loc.items() if m.full_description is not None
+                for locale, m in loc.items() if m.full_description
             },
             "donate": [app.donate_url] if app.donate_url else None,     # FIXME
             "icon": {
@@ -953,14 +963,13 @@ def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
             "preferredSigner": signer,
         }
         data[app.appid] = {
-            "metadata": {k: v for k, v in metadata.items() if v is not None},
+            "metadata": {k: v for k, v in metadata.items() if v},
             "versions": v2_versions(app, apks[app.appid], loc),
         }
     return data
 
 
 # FIXME
-# FIXME: nativecode, ...
 # FIXME: sort by group, signer, version_code
 def v2_versions(app: App, apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dict[str, Any]:
     """Create v2 index app versions data."""
@@ -979,6 +988,7 @@ def v2_versions(app: App, apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dic
             for p in man.permissions if p.min_sdk_version
         ]
         manifest = {
+            "nativecode": man.abis,
             "versionName": man.version_name,
             "versionCode": man.version_code,
             "features": features,
@@ -990,9 +1000,6 @@ def v2_versions(app: App, apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dic
             "usesPermission": permissions,
             "usesPermissionSdk23": permissions_sdk23,
         }
-        for k in ("features", "usesPermission", "usesPermissionSdk23"):
-            if not manifest[k]:
-                del manifest[k]
         entry = {
             "added": apk.added,
             "file": {
@@ -1000,7 +1007,7 @@ def v2_versions(app: App, apks: Dict[int, Apk], loc: Dict[str, Metadata]) -> Dic
                 "sha256": apk.sha256,
                 "size": apk.size,
             },
-            "manifest": manifest,
+            "manifest": {k: v for k, v in manifest.items() if v},
             "antiFeatures": app.anti_features,
             "whatsNew": {
                 locale: m.changelogs[man.version_code]

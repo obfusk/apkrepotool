@@ -21,12 +21,13 @@
 
 ## next
 
-* [ ] nativecode etc.
+* [x] CI/testing: small test repo in submodule
+* [x] nativecode
+* [x] categories in index
 * [ ] `--continue-on-errors` (skip those APKs)
 * [ ] `cache/apks.json`
 * [ ] repo fingerprint, QR, ...
-* [ ] CI/testing: small test repo in submodule
-* [ ] categories in index
+* [ ] more missing fields
 * [ ] RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ...
 * [ ] advanced options (e.g. mirrors, custom AFs, localised config)
 * [ ] transparency log (2x) + signature blocklist
