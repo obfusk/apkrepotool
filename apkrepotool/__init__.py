@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import repro_apk.binres as binres       # FIXME: needs proper release & dependency
+import repro_apk.binres as binres
 
 from ruamel.yaml import YAML
 
