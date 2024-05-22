@@ -24,27 +24,32 @@
 * [x] CI/testing: small test repo in submodule
 * [x] nativecode
 * [x] categories in index
-* [ ] `--continue-on-errors` (skip those APKs)
-* [ ] `cache/apks.json`
-* [ ] repo fingerprint, QR, ...
-* [ ] more missing fields
-* [ ] RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ...
-* [ ] advanced options (e.g. mirrors, custom AFs, localised config)
-* [ ] transparency log (2x) + signature blocklist
-* [ ] hooks for checks
-* [ ] hooks for deploy, init, etc.
-* [ ] JSON schemas
+* [ ] ~/.apkrepotool: document & print() (#10)
+* [ ] link subcomand (get url w/ fingerprint) (#8)
+* [ ] run subcommand (hooks for deploy, init, etc.) (#9)
+* [ ] lint subcommand & JSON schemas (#4)
+* [ ] `--continue-on-errors` (skip those APKs) (#6)
+* [ ] `cache/apks.json` (#7)
+* [ ] more YAML: RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ... (#16)
+* [ ] advanced options (e.g. mirrors, custom AFs, localised config, per-APK AFs) (#14)
+* [ ] test coverage (#11)
 
-## nice to have
+## more
+
+* [ ] hooks for checks (#12)
+* [ ] transparency log (2x) + signature blocklist (#13)
+* [ ] QR code (#17)
+* [ ] HSM support (#15)
+* [ ] .deb (#2)
+
+## nice to have (#5)
 
 * [ ] get app name from APK
 * [ ] get (XML) icons from APK
-* [ ] HSM support
 * [ ] `apkcache.json` -> `timestamps.json` script
-* [ ] per-APK AntiFeatures
 * [ ] "API" ?!
 
-## extensions
+## extensions (#3)
 
 * [ ] RSS feed for announcements (e.g. app removals)
 * [ ] exodus
