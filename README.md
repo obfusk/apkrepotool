@@ -72,6 +72,11 @@ $ vim config.yml
 
 ## CLI
 
+NB: `apkrepotool` will save a `Cert.java` (and `Cert.class` if `javac` is
+available and can compile `Cert.java`) in `~/.apkrepotool` (unless a different
+`apkrepotool_dir` is specified in `config.yml`); these are needed to interface
+with the `apksigner` JAR file to verify APK signatures.
+
 ```bash
 $ apkrepotool update -v
 Processing 'repo/catima-v2.28.0.apk'...

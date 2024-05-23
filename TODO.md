@@ -24,7 +24,7 @@
 * [x] CI/testing: small test repo in submodule
 * [x] nativecode
 * [x] categories in index
-* [ ] ~/.apkrepotool: document & print() (#10)
+* [x] ~/.apkrepotool: document & print() (#10)
 * [ ] link subcomand (get url w/ fingerprint) (#8)
 * [ ] run subcommand (hooks for deploy, init, etc.) (#9)
 * [ ] lint subcommand & JSON schemas (#4)

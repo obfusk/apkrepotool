@@ -113,7 +113,7 @@ class JavaStuff:
     cert_java: Path
 
     @classmethod
-    def load(_cls, cfg: Optional[Config] = None) -> JavaStuff:
+    def load(_cls, cfg: Optional[Config] = None, verbose: int = 0) -> JavaStuff:
         """Create from get_apksigner_jar(), get_java(), get_cert_java()."""
         art_dir = Path(cfg.apkrepotool_dir) if cfg and cfg.apkrepotool_dir else None
         jars = [cfg.apksigner_jar] if cfg and cfg.apksigner_jar else None
@@ -121,7 +121,9 @@ class JavaStuff:
         java, javac = get_java(java_home=java_home)
         apksigner_jar = get_apksigner_jar(jars=jars)
         schemes = get_apksigner_supported_schemes(apksigner_jar, java)
-        cert_java = get_cert_java(apksigner_jar, javac, apkrepotool_dir=art_dir)
+        cert_java = get_cert_java(apksigner_jar, javac, apkrepotool_dir=art_dir, verbose=verbose)
+        if verbose > 1:
+            print(f"Using apksigner JAR {apksigner_jar!r}.")
         return JavaStuff(java=java, javac=javac, apksigner_jar=apksigner_jar,
                          apksigner_supported_schemes=schemes, cert_java=cert_java)
 
@@ -582,7 +584,7 @@ def get_signing_certs(apkfile: Path, *, java_stuff: Optional[JavaStuff] = None) 
 
 # FIXME
 def get_cert_java(apksigner_jar: str, javac: Optional[str], *,
-                  apkrepotool_dir: Optional[Path] = None) -> Path:
+                  apkrepotool_dir: Optional[Path] = None, verbose: int = 0) -> Path:
     r"""
     Get path to Cert.java or Cert.class.
 
@@ -612,12 +614,18 @@ def get_cert_java(apksigner_jar: str, javac: Optional[str], *,
     cert_class = cert_java.with_suffix(".class")
     if not (cert_java.exists() and get_sha256(cert_java) == CERT_JAVA_SHA256):
         apkrepotool_dir.mkdir(mode=0o700, exist_ok=True)
+        if verbose:
+            print(f"Writing {str(cert_java)!r}...")
         cert_java.write_text(CERT_JAVA_CODE, encoding="utf-8")
         if cert_class.exists():
             cert_class.unlink()
         if javac:
+            if verbose:
+                print(f"Compiling {str(cert_class)!r}...")
             args = (javac, "-classpath", f"{cert_java.parent}:{apksigner_jar}", str(cert_java))
             subprocess.run(args, check=False)
+            if verbose:
+                print("  OK" if cert_class.exists() else "  failed")
     return cert_class if cert_class.exists() else cert_java
 
 
@@ -1232,7 +1240,7 @@ def do_update(verbose: int = 0) -> None:
     timestamp = int(time.time()) * 1000
     cfg = parse_config_yaml(config_file)
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
-    java_stuff = JavaStuff.load(cfg=cfg)
+    java_stuff = JavaStuff.load(cfg=cfg, verbose=verbose)
     apks: Dict[str, Dict[int, Apk]] = {}
     apps, meta, aask, one_signer_only = [], {}, {}, {}
     times: Dict[str, Set[int]] = {}
