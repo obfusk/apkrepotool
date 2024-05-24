@@ -96,6 +96,30 @@ Signing index-v1.jar...
 Signing entry.jar...
 ```
 
+```bash
+$ apkrepotool link
+https://example.com/test/repo/?fingerprint=D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D
+```
+
+```bash
+$ apkrepotool --help
+Usage: apkrepotool [OPTIONS] COMMAND [ARGS]...
+
+  apkrepotool - manage APK repos
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  link    print repo link
+  update  generate/update index
+$ apkrepotool link --help
+[...]
+$ apkrepotool update --help
+[...]
+```
+
 ## Directory Structure
 
 <details>
@@ -185,7 +209,7 @@ password file instead.
 
 ```yaml
 # repo information
-repo_url: https://example.com/fdroid/repo
+repo_url: https://example.com/fdroid/repo/
 repo_name: My Repo
 repo_description: >-
   This is a repository of apps to be used with an F-Droid-compatible client.

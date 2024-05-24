@@ -25,7 +25,7 @@
 * [x] nativecode
 * [x] categories in index
 * [x] ~/.apkrepotool: document & print() (#10)
-* [ ] link subcomand (get url w/ fingerprint) (#8)
+* [x] link subcomand (get url w/ fingerprint) (#8)
 * [ ] run subcommand (hooks for deploy, init, etc.) (#9)
 * [ ] lint subcommand & JSON schemas (#4)
 * [ ] `--continue-on-errors` (skip those APKs) (#6)

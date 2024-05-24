@@ -29,6 +29,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 import repro_apk.binres as binres
 
@@ -108,6 +109,7 @@ class JavaStuff:
     """Java Stuff."""
     java: str
     javac: Optional[str]
+    keytool: str
     apksigner_jar: str
     apksigner_supported_schemes: List[int]
     cert_java: Path
@@ -118,13 +120,13 @@ class JavaStuff:
         art_dir = Path(cfg.apkrepotool_dir) if cfg and cfg.apkrepotool_dir else None
         jars = [cfg.apksigner_jar] if cfg and cfg.apksigner_jar else None
         java_home = cfg.java_home if cfg else None
-        java, javac = get_java(java_home=java_home)
+        java, javac, keytool = get_java(java_home=java_home)
         apksigner_jar = get_apksigner_jar(jars=jars)
         schemes = get_apksigner_supported_schemes(apksigner_jar, java)
         cert_java = get_cert_java(apksigner_jar, javac, apkrepotool_dir=art_dir, verbose=verbose)
         if verbose > 1:
             print(f"Using apksigner JAR {apksigner_jar!r}.")
-        return JavaStuff(java=java, javac=javac, apksigner_jar=apksigner_jar,
+        return JavaStuff(java=java, javac=javac, keytool=keytool, apksigner_jar=apksigner_jar,
                          apksigner_supported_schemes=schemes, cert_java=cert_java)
 
 
@@ -308,7 +310,7 @@ def parse_config_yaml(config_file: Path) -> Config:
     >>> cfg = parse_config_yaml(Path("test/config.yml"))
     >>> for field in dataclasses.fields(cfg):
     ...     print(f"{field.name}={getattr(cfg, field.name)!r}")
-    repo_url='https://example.com/fdroid/repo'
+    repo_url='https://example.com/fdroid/repo/'
     repo_name='My Repo'
     repo_description='This is a repository of apps to be used with an F-Droid-compatible client. Applications in this repository are official binaries built by the original application developers.'
     repo_keyalias='myrepo'
@@ -659,28 +661,32 @@ def get_apksigner_jar(*, jars: Optional[List[str]] = None,
     raise Error("Could not locate apksigner JAR")
 
 
-def get_java(*, java_home: Optional[str] = None) -> Tuple[str, Optional[str]]:
+def get_java(*, java_home: Optional[str] = None) -> Tuple[str, Optional[str], str]:
     r"""
-    Find java (and possibly javac) using $JAVA_HOME/$PATH.
+    Find java, (possibly) javac, and keytool using $JAVA_HOME/$PATH.
 
     >>> get_java()
-    ('/usr/bin/java', '/usr/bin/javac')
+    ('/usr/bin/java', '/usr/bin/javac', '/usr/bin/keytool')
     >>> get_java(java_home="/usr/lib/jvm/java-11-openjdk-amd64")
-    ('/usr/lib/jvm/java-11-openjdk-amd64/bin/java', '/usr/lib/jvm/java-11-openjdk-amd64/bin/javac')
+    ('/usr/lib/jvm/java-11-openjdk-amd64/bin/java', '/usr/lib/jvm/java-11-openjdk-amd64/bin/javac', '/usr/lib/jvm/java-11-openjdk-amd64/bin/keytool')
 
     """
-    java = javac = None
+    java = javac = keytool = None
     if not java_home:
         java_home = os.environ.get("JAVA_HOME")
     if java_home:
         java = os.path.join(java_home, "bin/java")
         javac = os.path.join(java_home, "bin/javac")
+        keytool = os.path.join(java_home, "bin/keytool")
     if not (java and os.path.exists(java)):
         java = shutil.which("java")
         javac = shutil.which("javac")
+        keytool = shutil.which("keytool")
         if not (java and os.path.exists(java)):
             raise Error("Could not locate java")
-    return java, (javac if javac and os.path.exists(javac) else None)
+    if not (keytool and os.path.exists(keytool)):
+        raise Error("Could not locate keytool")
+    return java, (javac if javac and os.path.exists(javac) else None), keytool
 
 
 def _vsn(v: str) -> Tuple[int, ...]:
@@ -1121,33 +1127,55 @@ def sign_jar(cfg: Config, jar_file: Path, *, java_stuff: Optional[JavaStuff] = N
         args.append("--v4-signing-enabled=false")
     args.append(str(jar_file))
     ks_pass, key_pass = get_passwords(cfg.keystorepass_cmd, cfg.keypass_cmd)
+    assert key_pass is not None
     env = dict(APKREPOTOOL_KS_PASS=ks_pass, APKREPOTOOL_KEY_PASS=key_pass)
     try:
-        out, err = run_command(*args, env=env)
+        run_command(*args, env=env)
     except subprocess.CalledProcessError as e:
         raise Error(f"Signing with apksigner failed: {e}") from e
     except FileNotFoundError as e:
         raise Error(f"Could not run apksigner: {e}") from e
 
 
-def get_passwords(keystorepass_cmd: str, keypass_cmd: str) -> Tuple[str, str]:
+def get_keystore_cert_fingerprint(cfg: Config, java_stuff: JavaStuff) -> str:
+    """Get keystore certificate fingerprint."""
+    args = [java_stuff.keytool, "-exportcert", "-keystore", cfg.keystore,
+            "-alias", cfg.repo_keyalias, "-storepass:env", "APKREPOTOOL_KS_PASS"]
+    ks_pass, _ = get_passwords(cfg.keystorepass_cmd, None)
+    env = {**os.environ, **dict(APKREPOTOOL_KS_PASS=ks_pass)}
+    try:
+        out = subprocess.run(args, check=True, env=env, stdout=subprocess.PIPE).stdout
+        return hashlib.sha256(out).hexdigest()
+    except subprocess.CalledProcessError as e:
+        raise Error(f"Exporting certificate with keytool failed: {e}") from e
+    except FileNotFoundError as e:
+        raise Error(f"Could not run keytool: {e}") from e
+
+
+def get_passwords(keystorepass_cmd: str, keypass_cmd: Optional[str]) -> Tuple[str, Optional[str]]:
     r"""
     Get passwords by running keystorepass_cmd & keypass_cmd.
 
     >>> get_passwords("echo foo", "echo bar")
     ('foo', 'bar')
+    >>> get_passwords("echo foo", None)
+    ('foo', None)
 
     """
     try:
         keystorepass_out = subprocess.run(keystorepass_cmd, check=True, shell=True,
                                           stdout=subprocess.PIPE).stdout
-        keypass_out = subprocess.run(keypass_cmd, check=True, shell=True,
-                                     stdout=subprocess.PIPE).stdout
+        keystorepass = keystorepass_out.decode().strip("\r\n")
+        if keypass_cmd is not None:
+            keypass_out = subprocess.run(keypass_cmd, check=True, shell=True,
+                                         stdout=subprocess.PIPE).stdout
+            keypass = keypass_out.decode().strip("\r\n")
+            return keystorepass, keypass
+        return keystorepass, None
     except subprocess.CalledProcessError as e:
         raise Error(f"Password command failed: {e}") from e
     except FileNotFoundError as e:
         raise Error(f"Could not run password command: {e}") from e
-    return keystorepass_out.decode().strip("\r\n"), keypass_out.decode().strip("\r\n")
 
 
 def get_apksigner_supported_schemes(apksigner_jar: str, java: str) -> List[int]:
@@ -1229,6 +1257,18 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
 # def do_init() -> None:
 #     """Create a new repo."""
 #     raise NotImplementedError("FIXME")
+
+
+def do_link() -> None:
+    """Print repo link."""
+    cfg = parse_config_yaml(Path("config.yml"))
+    java_stuff = JavaStuff.load(cfg=cfg)
+    fpr = get_keystore_cert_fingerprint(cfg, java_stuff).upper()
+    url = urlparse(cfg.repo_url)
+    if not url.path.endswith("/"):
+        url = url._replace(path=f"{url.path}/")
+    url = url._replace(query=f"fingerprint={fpr}")
+    print(url.geturl())
 
 
 # FIXME
@@ -1325,6 +1365,12 @@ def main() -> None:
     # """)
     # def init(*args: Any, **kwargs: Any) -> None:
     #     do_init(*args, **kwargs)
+
+    @cli.command(help="""
+        print repo link
+    """)
+    def link(*args: Any, **kwargs: Any) -> None:
+        do_link(*args, **kwargs)
 
     @cli.command(help="""
         generate/update index

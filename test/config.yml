@@ -1,4 +1,4 @@
-repo_url: https://example.com/fdroid/repo
+repo_url: https://example.com/fdroid/repo/
 repo_name: My Repo
 repo_description: >-
   This is a repository of apps to be used with an F-Droid-compatible client.
