@@ -33,6 +33,7 @@
 * [ ] more YAML: RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ... (#16)
 * [ ] advanced options (e.g. mirrors, custom AFs, localised config, per-APK AFs) (#14)
 * [ ] test coverage (#11)
+* [ ] implement & use `binres.quick_get_manifest_info()` (#18)
 
 ## more
 
