@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 import zipfile
 
 from dataclasses import dataclass
@@ -468,52 +467,14 @@ def get_manifest(apkfile: Path) -> Manifest:
     abis=['armeabi']
 
     """
-    def get(elem: ET.Element, attr: str, default: Optional[Any] = None,
-            android: bool = True) -> Optional[str]:
-        if android:
-            attr = "{" + binres.SCHEMA_ANDROID + "}" + attr
-        return elem.get(attr, default)
-
-    def get_str(elem: ET.Element, attr: str, default: Optional[str] = None,
-                android: bool = True) -> str:
-        value = get(elem, attr, default=default, android=android)
-        if not isinstance(value, str):
-            raise TypeError("AndroidManifest.xml element type mismatch")
-        return value
-
-    chunk = binres.read_chunk(binres.quick_load(str(apkfile), binres.MANIFEST))[0]
-    if not isinstance(chunk, binres.XMLChunk):
-        raise Error("Expected XMLChunk")
-    root = binres.xmlchunk_to_etree(chunk).getroot()
-    uses_sdk = root.find("uses-sdk")
-    if uses_sdk is None:
-        raise TypeError("AndroidManifest.xml missing uses-sdk")
-    features = []
-    for elem in root.iterfind("uses-feature"):
-        if get_str(elem, "required") == "true":
-            features.append(Feature(get_str(elem, "name")))
-    permissions = []
-    for k in ("uses-permission", "uses-permission-sdk-23"):
-        for elem in root.iterfind(k):
-            min_sdk_version = 23 if k == "uses-permission-sdk-23" else None
-            maxsv = get(elem, "maxSdkVersion")
-            max_sdk_version = int(maxsv) if maxsv is not None else None
-            permissions.append(Permission(
-                name=get_str(elem, "name"), min_sdk_version=min_sdk_version,
-                max_sdk_version=max_sdk_version))
-    min_sdk = int(get_str(uses_sdk, "minSdkVersion", default="1"))
-    target_sdk = int(get_str(uses_sdk, "targetSdkVersion", default=str(min_sdk)))
-    with zipfile.ZipFile(apkfile) as zf:
-        abis = sorted(set(n.split("/")[1] for n in zf.namelist()
-                          if n.startswith("lib/") and n.endswith(".so")))
-    return Manifest(
-        appid=get_str(root, "package", android=False),
-        version_code=int(get_str(root, "versionCode")),
-        version_name=get_str(root, "versionName"),
-        min_sdk=min_sdk, target_sdk=target_sdk,
-        features=sorted(features, key=lambda f: f.name),
-        permissions=sorted(permissions, key=lambda f: f.name),
-        abis=abis)
+    m = binres.get_manifest_info_apk(str(apkfile))
+    assert m.abis is not None
+    features = [Feature(f.name) for f in m.features if f.required]
+    permissions = [Permission(p.name, p.min_sdk_version, p.max_sdk_version) for p in m.permissions]
+    return Manifest(appid=m.appid, version_code=m.version_code, version_name=m.version_name,
+                    min_sdk=m.min_sdk, target_sdk=m.target_sdk,
+                    features=sorted(features, key=lambda f: f.name),
+                    permissions=sorted(permissions, key=lambda p: p.name), abis=m.abis)
 
 
 def get_sha256(file: Path) -> str:
