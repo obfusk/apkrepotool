@@ -1,5 +1,7 @@
+.coverage
 /.tmp
 /apkrepotool.egg-info
 /build
 /dist
+/htmlcov
 __pycache__

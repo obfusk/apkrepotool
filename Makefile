@@ -1,9 +1,12 @@
-SHELL   := /bin/bash
-PYTHON  ?= python3
+SHELL       := /bin/bash
+PYTHON      ?= python3
+
+APKREPOTOOL ?= apkrepotool
+PYCOV       := $(PYTHON) -mcoverage run --data-file=$(PWD)/.coverage --source $(PWD)/apkrepotool
 
 export PYTHONWARNINGS := default
 
-.PHONY: all install test test-cli test-repo doctest lint lint-extra clean cleanup
+.PHONY: all install test test-cli doctest coverage test-repo lint lint-extra clean cleanup
 
 all:
 
@@ -14,10 +17,20 @@ test: test-cli doctest lint lint-extra
 
 test-cli:
 	# TODO
-	apkrepotool --version
+	$(APKREPOTOOL) --version
+
+doctest:
+	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py
+
+coverage:
+	rm -fr .tmp/
+	APKREPOTOOL_DIR=.tmp $(PYCOV) -m doctest apkrepotool/*.py
+	$(MAKE) test-repo APKREPOTOOL="$(PYCOV) -a -m apkrepotool.__init__"
+	$(PYTHON) -mcoverage html --data-file=$(PWD)/.coverage
+	$(PYTHON) -mcoverage report --data-file=$(PWD)/.coverage
 
 test-repo:
-	cd test/test-repo && $(MAKE) clean && apkrepotool update -v
+	cd test/test-repo && $(MAKE) clean && $(APKREPOTOOL) update -v
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/entry-1strun.json \
 	     | sed -r '/^ *"(timestamp|sha256)":/d' ) \
@@ -33,7 +46,7 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
-	cd test/test-repo && apkrepotool update -v
+	cd test/test-repo && $(APKREPOTOOL) update -v
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/entry-2ndrun.json \
 	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
@@ -53,9 +66,9 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
-
-doctest:
-	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py
+	diff -Naur <( cd test/test-repo && $(APKREPOTOOL) link ) \
+	  <( printf '%s%s\n' https://example.com/test/repo/?fingerprint= \
+	     D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D )
 
 lint:
 	flake8 apkrepotool/*.py
@@ -70,7 +83,7 @@ clean: cleanup
 cleanup:
 	find -name '*~' -delete -print
 	rm -fr apkrepotool/__pycache__/ .mypy_cache/
-	rm -fr build/ dist/ .tmp/
+	rm -fr build/ dist/ .tmp/ .coverage htmlcov/
 
 .PHONY: _package _publish
 

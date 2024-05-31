@@ -27,13 +27,13 @@
 * [x] ~/.apkrepotool: document & print() (#10)
 * [x] link subcomand (get url w/ fingerprint) (#8)
 * [x] implement & use `binres.get_manifest_info()` (#18)
+* [x] test coverage (#11)
 * [ ] run subcommand (hooks for deploy, init, etc.) (#9)
 * [ ] lint subcommand & JSON schemas (#4)
 * [ ] `--continue-on-errors` (skip those APKs) (#6)
 * [ ] `cache/apks.json` (#7)
 * [ ] more YAML: RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ... (#16)
 * [ ] advanced options (e.g. mirrors, custom AFs, localised config, per-APK AFs) (#14)
-* [ ] test coverage (#11)
 
 ## more
 
