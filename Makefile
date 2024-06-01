@@ -30,7 +30,7 @@ coverage:
 	$(PYTHON) -mcoverage report --data-file=$(PWD)/.coverage
 
 test-repo:
-	cd test/test-repo && $(MAKE) clean && $(APKREPOTOOL) update -v
+	cd test/test-repo && $(MAKE) clean && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) update -v
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/entry-1strun.json \
 	     | sed -r '/^ *"(timestamp|sha256)":/d' ) \
@@ -46,7 +46,7 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
-	cd test/test-repo && $(APKREPOTOOL) update -v
+	cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) update -v
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/entry-2ndrun.json \
 	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
@@ -66,7 +66,7 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
-	diff -Naur <( cd test/test-repo && $(APKREPOTOOL) link ) \
+	diff -Naur <( cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) link ) \
 	  <( printf '%s%s\n' https://example.com/test/repo/?fingerprint= \
 	     D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D )
 
