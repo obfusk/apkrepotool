@@ -1297,8 +1297,9 @@ def do_update(verbose: int = 0) -> None:
                 if one_signer_only[appid]:
                     raise Error(f"Multiple signers for {filename!r}: {apk.signing_keys}")
                 print(f"Warning: multiple signers for {filename!r}: {apk.signing_keys}.", file=sys.stderr)
-            if signers != ["any"] and apk.signing_keys[0] not in signers:
-                raise Error(f"Unallowed signer for {filename!r}: {apk.signing_keys[0]}")
+            missing = [k for k in apk.signing_keys if k not in signers]
+            if missing and signers != ["any"]:
+                raise Error(f"Unallowed signer(s) for {filename!r}: {missing}")
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
     make_index(repo_dir=repo_dir, cache_dir=cache_dir, apps=apps, apks=apks, meta=meta,
