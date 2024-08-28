@@ -287,8 +287,14 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
                 anti_features = {k: {} for k in data["AntiFeatures"]}
             else:
                 anti_features = data["AntiFeatures"]
+        if "Name" in data:
+            name = data["Name"]
+        elif "AutoName" in data:
+            name = data["AutoName"]
+        else:
+            raise NotImplementedError("FIXME: cannot get name from APK yet")
         return App(
-            appid=appid, name=data["Name"], allowed_apk_signing_keys=aask,
+            appid=appid, name=name, allowed_apk_signing_keys=aask,
             anti_features=anti_features, categories=data.get("Categories", []),
             current_version_code=data.get("CurrentVersionCode", latest_version_code),
             current_version_name=data.get("CurrentVersion"),
