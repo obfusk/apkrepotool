@@ -1181,7 +1181,7 @@ def hashed_image(path: Path) -> FileInfo:
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
-                merged: bool = False, verbose: bool = False) -> Tuple[str, str]:
+                merged: bool = False, verbose: bool = False) -> Tuple[str, Optional[str]]:
     r"""
     Run command and capture stdout + stderr.
 
