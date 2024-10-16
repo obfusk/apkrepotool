@@ -288,7 +288,7 @@ Python >= 3.8 + `click` + `ruamel.yaml` + `repro-apk` >= 0.2.7.
 
 ```bash
 $ apt install python3-pip python3-click python3-ruamel.yaml
-$ pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.2.8
+$ pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.3.0
 ```
 
 ## License
