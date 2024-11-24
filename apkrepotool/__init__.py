@@ -233,7 +233,7 @@ class FileInfo:
     @classmethod
     def from_path(_cls, path: Path) -> FileInfo:
         """Create from Path."""
-        return FileInfo(path, path.stat().st_size, get_sha256(path))
+        return FileInfo(path=path, size=path.stat().st_size, sha256=get_sha256(path))
 
 
 # FIXME
@@ -482,8 +482,9 @@ def get_manifest(apkfile: Path) -> Manifest:
     """
     m = binres.get_manifest_info_apk(str(apkfile))
     assert m.abis is not None
-    features = [Feature(f.name) for f in m.features if f.required]
-    permissions = [Permission(p.name, p.min_sdk_version, p.max_sdk_version) for p in m.permissions]
+    features = [Feature(name=f.name) for f in m.features if f.required]
+    permissions = [Permission(name=p.name, min_sdk_version=p.min_sdk_version,
+                              max_sdk_version=p.max_sdk_version) for p in m.permissions]
     return Manifest(appid=m.appid, version_code=m.version_code, version_name=m.version_name,
                     min_sdk=m.min_sdk, target_sdk=m.target_sdk,
                     features=sorted(features, key=lambda f: f.name),
@@ -1184,7 +1185,7 @@ def hashed_image(path: Path) -> FileInfo:
     hashed_path = path.with_name(f"{path.stem}_{b64hash}{path.suffix}")
     if not hashed_path.exists():
         shutil.copy2(path, hashed_path)
-    return FileInfo(hashed_path, info.size, info.sha256)
+    return FileInfo(path=hashed_path, size=info.size, sha256=info.sha256)
 
 
 def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool = True,
