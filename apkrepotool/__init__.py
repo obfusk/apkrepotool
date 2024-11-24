@@ -25,7 +25,7 @@ import sys
 import time
 import zipfile
 
-from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path, PurePath
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
@@ -33,6 +33,12 @@ from urllib.parse import urlparse
 import repro_apk.binres as binres
 
 from ruamel.yaml import YAML
+
+try:
+    from pydantic.dataclasses import dataclass
+except ImportError:
+    print("Warning: pydantic not available, validation disabled.", file=sys.stderr)
+    from dataclasses import dataclass   # type: ignore[no-redef]
 
 __version__ = "0.0.1"
 NAME = "apkrepotool"
@@ -135,22 +141,22 @@ class App:
     """App."""
     appid: str
     name: str
-    allowed_apk_signing_keys: List[str]
-    anti_features: Dict[str, Dict[str, str]]
-    categories: List[str]
     current_version_code: int
-    current_version_name: Optional[str]
-    one_signer_only: bool
-    author_email: Optional[str]
-    author_name: Optional[str]
-    author_website_url: Optional[str]
-    changelog_url: Optional[str]
-    donate_url: Optional[str]
-    issue_tracker_url: Optional[str]
-    license: Optional[str]
-    source_code_url: Optional[str]
-    translation_url: Optional[str]
-    website_url: Optional[str]
+    current_version_name: Optional[str] = None
+    allowed_apk_signing_keys: List[str] = field(default_factory=list)
+    anti_features: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    categories: List[str] = field(default_factory=list)
+    one_signer_only: bool = True
+    author_email: Optional[str] = None
+    author_name: Optional[str] = None
+    author_website_url: Optional[str] = None
+    changelog_url: Optional[str] = None
+    donate_url: Optional[str] = None
+    issue_tracker_url: Optional[str] = None
+    license: Optional[str] = None
+    source_code_url: Optional[str] = None
+    translation_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -203,9 +209,9 @@ class Config:
     keystore: str
     keystorepass_cmd: str
     keypass_cmd: str
-    apkrepotool_dir: Optional[str]
-    apksigner_jar: Optional[str]
-    java_home: Optional[str]
+    apkrepotool_dir: Optional[str] = None
+    apksigner_jar: Optional[str] = None
+    java_home: Optional[str] = None
 
 
 # FIXME
@@ -233,13 +239,13 @@ class FileInfo:
 @dataclass(frozen=True)
 class Metadata:
     """App metadata."""
-    title: Optional[str]
-    short_description: Optional[str]
-    full_description: Optional[str]
-    changelogs: Dict[int, str]
-    icon_file: Optional[FileInfo]
-    feature_graphic_file: Optional[FileInfo]
-    phone_screenshots_files: List[FileInfo]
+    title: Optional[str] = None
+    short_description: Optional[str] = None
+    full_description: Optional[str] = None
+    changelogs: Dict[int, str] = field(default_factory=dict)
+    icon_file: Optional[FileInfo] = None
+    feature_graphic_file: Optional[FileInfo] = None
+    phone_screenshots_files: List[FileInfo] = field(default_factory=list)
 
 
 # FIXME
@@ -253,11 +259,11 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     ...     print(f"{field.name}={getattr(app, field.name)!r}")
     appid='android.appsecurity.cts.tinyapp'
     name='TestApp'
+    current_version_code=10
+    current_version_name='1.0'
     allowed_apk_signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
     anti_features={}
     categories=['Development']
-    current_version_code=10
-    current_version_name='1.0'
     one_signer_only=True
     author_email='google@example.com'
     author_name='Google'
@@ -294,11 +300,11 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
         else:
             raise NotImplementedError("FIXME: cannot get name from APK yet")
         return App(
-            appid=appid, name=name, allowed_apk_signing_keys=aask,
-            anti_features=anti_features, categories=data.get("Categories", []),
+            appid=appid, name=name,
             current_version_code=data.get("CurrentVersionCode", latest_version_code),
             current_version_name=data.get("CurrentVersion"),
-            one_signer_only=data.get("OneSignerOnly", True),
+            allowed_apk_signing_keys=aask, anti_features=anti_features,
+            categories=data.get("Categories", []), one_signer_only=data.get("OneSignerOnly", True),
             author_email=data.get("AuthorEmail"), author_name=data.get("AuthorName"),
             author_website_url=data.get("AuthorWebSite"), changelog_url=data.get("Changelog"),
             donate_url=data.get("Donate"), issue_tracker_url=data.get("IssueTracker"),
@@ -1041,7 +1047,7 @@ def save_timestamps(parent_dir: Path, timestamps: Dict[str, int]) -> None:
 def load_json(path: Path) -> Dict[str, Any]:
     """Load JSON data."""
     with path.open(encoding="utf-8") as fh:
-        return json.load(fh)    # type: ignore[no-any-return]
+        return json.load(fh)            # type: ignore[no-any-return]
 
 
 def save_json(path: Path, data: Dict[str, Any], *, ensure_ascii: bool = False,

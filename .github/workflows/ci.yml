@@ -47,7 +47,7 @@ jobs:
           sudo apt-get remove -y temurin-{8,11,17,21}-jdk
           python3 -m pip install --upgrade pip
           python3 -m pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.3.0
-          python3 -m pip install flake8 pylint coverage
+          python3 -m pip install pydantic flake8 pylint coverage
       - name: Install mypy
         run: python3 -m pip install mypy
         continue-on-error:
