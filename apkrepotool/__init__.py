@@ -35,6 +35,7 @@ import repro_apk.binres as binres
 from ruamel.yaml import YAML
 
 try:
+    # FIXME: setup.py
     from pydantic.dataclasses import dataclass
 except ImportError:
     print("Warning: pydantic not available, validation disabled.", file=sys.stderr)
