@@ -19,10 +19,12 @@ import binascii
 import hashlib
 import json
 import os
+import pkg_resources
 import shutil
 import subprocess
 import sys
 import time
+import uuid
 import zipfile
 
 from dataclasses import field
@@ -312,6 +314,51 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
             license=data.get("License"), source_code_url=data.get("SourceCode"),
             translation_url=data.get("Translation"), website_url=data.get("WebSite"))
 
+
+def default_config() -> Config:
+    return Config(
+        repo_url="https://example.tld/repo/",
+        repo_name="Example",
+        repo_description="My example repo",
+        repo_keyalias="apkrepo",
+        keystore="apkrepo.jks",
+        keystorepass_cmd="cat passwd",
+        keypass_cmd="cat passwd"
+    )
+
+def write_config(config: Config, config_file: Path):
+    with config_file.open("w", encoding="utf-8") as fh:
+        yaml = YAML(typ="safe")
+        yaml.default_flow_style = False
+        cfg_dump = {k: v for k, v in vars(config).items() if v is not None}
+        yaml.dump(cfg_dump, fh)
+
+def gen_keystore(keystore_path: Path, passwd_path: Path, key_alias: str):
+    passwd = uuid.uuid4().hex
+    with passwd_path.open("w", encoding="utf-8") as fh:
+        fh.write(passwd)
+    # When generating a new key, store pass and key pass need to be the same for PKCS12
+    run_command(
+                "keytool",
+                "-genkey",
+                "-v",
+                "-keystore",
+                keystore_path.name,
+                "-alias",
+                key_alias,
+                "-storepass",
+                passwd,
+                "-dname",
+                "cn=RepoTool, ou=Unknown, o=Unknown, c=Unknown",
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "4096",
+                "-sigalg",
+                "SHA512withRSA",
+                "-validity",
+                "10000"
+            )
 
 # FIXME
 def parse_config_yaml(config_file: Path) -> Config:
@@ -1228,10 +1275,30 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
     return out, err
 
 
-# FIXME
-# def do_init() -> None:
-#     """Create a new repo."""
-#     raise NotImplementedError("FIXME")
+def do_init() -> None:
+    """Create a new repo."""
+    Path("repo/icons").mkdir(parents=True, exist_ok=True)
+    image_target = Path("repo/icons/icon.png")
+    if not image_target.exists():
+        image_path = pkg_resources.resource_filename(
+            __name__, 'assets/icon.png'
+        )
+        shutil.copy(image_path, image_target)
+    config = default_config()
+    config_path = Path("config.yml")
+    keystore_path = Path(config.keystore)
+    passwd_path = Path("passwd")
+    if config_path.exists():
+        print(f"{config_path.name} already exists")
+        exit(1)
+    if keystore_path.exists():
+        print(f"{keystore_path.name} already exists")
+        exit(1)
+    if passwd_path.exists():
+        print(f"{passwd_path.name} already exists")
+        exit(1)
+    gen_keystore(keystore_path, passwd_path, config.repo_keyalias)
+    write_config(config, config_path)
 
 
 def do_link() -> None:
@@ -1336,11 +1403,11 @@ def main() -> None:
     def cli() -> None:
         pass
 
-    # @cli.command(help="""
-    #     create a new repo
-    # """)
-    # def init(*args: Any, **kwargs: Any) -> None:
-    #     do_init(*args, **kwargs)
+    @cli.command(help="""
+        create a new repo
+    """)
+    def init(*args: Any, **kwargs: Any) -> None:
+        do_init(*args, **kwargs)
 
     @cli.command(help="""
         print repo link
