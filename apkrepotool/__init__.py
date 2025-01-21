@@ -25,7 +25,7 @@ import sys
 import time
 import zipfile
 
-from dataclasses import field
+from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
@@ -33,13 +33,6 @@ from urllib.parse import urlparse
 import repro_apk.binres as binres
 
 from ruamel.yaml import YAML
-
-try:
-    # FIXME: setup.py
-    from pydantic.dataclasses import dataclass
-except ImportError:
-    print("Warning: pydantic not available, validation disabled.", file=sys.stderr)
-    from dataclasses import dataclass   # type: ignore[no-redef]
 
 __version__ = "0.0.1"
 NAME = "apkrepotool"
