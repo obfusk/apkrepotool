@@ -47,7 +47,7 @@ jobs:
           python3 -m pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.3.0
           python3 -m pip install flake8 pylint coverage
       - name: Install mypy
-        run: python3 -m pip install mypy
+        run: python3 -m pip install mypy types-jsonschema
         continue-on-error:
           ${{ contains(matrix.python-version, 'alpha') ||
               contains(matrix.python-version, 'pypy') }}
