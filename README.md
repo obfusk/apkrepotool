@@ -282,7 +282,7 @@ $ git pull --rebase
 
 ## Dependencies
 
-Python >= 3.8 + `click` + `jsonschema` + `ruamel.yaml` + `repro-apk` >= 0.2.7.
+Python >= 3.9 + `click` + `jsonschema` + `ruamel.yaml` + `repro-apk` >= 0.2.7.
 
 ### Debian/Ubuntu
 

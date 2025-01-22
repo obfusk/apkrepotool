@@ -28,7 +28,6 @@ setuptools.setup(
         "Operating System :: POSIX",
         "Operating System :: Unix",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
@@ -44,6 +43,6 @@ setuptools.setup(
     entry_points=dict(console_scripts=["apkrepotool = apkrepotool:main"]),
     packages=["apkrepotool"],
     package_data=dict(apkrepotool=["py.typed", "schemas/*.json"]),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=["click>=6.0", "jsonschema", "repro-apk>=0.2.7", "ruamel.yaml"],
 )
