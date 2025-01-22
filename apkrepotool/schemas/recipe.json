@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/obfusk/apkrepotool/master/apkrepotool/schemas/recipe.json",
+  "title": "apkrepotool recipe",
+  "description": "apkrepotool app recipe (metadata/<appid>.yml)",
+  "type": "object",
+  "properties": {
+    "AllowedAPKSigningKeys": {
+      "description": "certificate SHA-256 digest (hex) for allowed signer(s) as per e.g. apksigner",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      ]
+    },
+    "AntiFeatures": {
+      "description": "application anti-features",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z]{2}(-([A-Z][a-zA-Z]+|[0-9]+))?$": {
+                  "type": "string"
+                }
+              },
+              "minProperties": 1,
+              "additionalProperties": false
+            }
+          },
+          "minProperties": 1
+        }
+      ]
+    },
+    "AuthorEmail": {
+      "description": "author's email address",
+      "type": "string"
+    },
+    "AuthorName": {
+      "description": "author's name",
+      "type": "string"
+    },
+    "AuthorWebSite": {
+      "description": "author's website URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "AutoName": {
+      "description": "application name (fallback)",
+      "type": "string"
+    },
+    "AutoUpdateMode": {
+      "description": "FIXME"
+    },
+    "Categories": {
+      "description": "application categories",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "Changelog": {
+      "description": "application changelog URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "CurrentVersion": {
+      "description": "currently recommended version (name)",
+      "type": "string"
+    },
+    "CurrentVersionCode": {
+      "description": "currently recommended version (code)",
+      "type": "integer"
+    },
+    "Donate": {
+      "description": "application donation URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "IssueTracker": {
+      "description": "application issue tracker URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "License": {
+      "description": "application license (SPDX identifier)",
+      "type": "string"
+    },
+    "MaintainerNotes": {
+      "description": "FIXME"
+    },
+    "Name": {
+      "description": "application name",
+      "type": "string"
+    },
+    "OneSignerOnly": {
+      "description": "whether to allow only one signer (default: true)",
+      "type": "boolean"
+    },
+    "Repo": {
+      "description": "FIXME"
+    },
+    "RepoType": {
+      "description": "FIXME"
+    },
+    "SourceCode": {
+      "description": "application source code URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "Translation": {
+      "description": "application translation URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    },
+    "UpdateCheckMode": {
+      "description": "FIXME"
+    },
+    "WebSite": {
+      "description": "application website URL",
+      "type": "string",
+      "pattern": "^https?://.*$"
+    }
+  },
+  "required": [
+    "Categories"
+  ],
+  "additionalProperties": false
+}

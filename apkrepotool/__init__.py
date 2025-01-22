@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import hashlib
+import importlib.resources
 import json
 import os
 import shutil
@@ -31,6 +33,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 import repro_apk.binres as binres
+import jsonschema
 
 from ruamel.yaml import YAML
 
@@ -243,7 +246,8 @@ class Metadata:
 
 
 # FIXME
-def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
+def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
+                      validate: bool = True) -> App:
     r"""
     Parse recipe YAML.
 
@@ -275,6 +279,8 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
     with recipe_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
+        if validate:
+            validate_recipe_yaml(data)
         aask = []
         anti_features: Dict[str, Dict[str, str]] = {}
         if "AllowedAPKSigningKeys" in data:
@@ -304,6 +310,32 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int) -> App:
             donate_url=data.get("Donate"), issue_tracker_url=data.get("IssueTracker"),
             license=data.get("License"), source_code_url=data.get("SourceCode"),
             translation_url=data.get("Translation"), website_url=data.get("WebSite"))
+
+
+def validate_recipe_yaml(data: Dict[str, Any]) -> None:
+    r"""
+    Validate recipe YAML.
+
+    >>> try:
+    ...     validate_recipe_yaml({})
+    ... except jsonschema.exceptions.ValidationError as e:
+    ...     e.message
+    "'Categories' is a required property"
+    >>> try:
+    ...     validate_recipe_yaml({"Categories": ["a", "a"]})
+    ... except jsonschema.exceptions.ValidationError as e:
+    ...     e.message
+    "['a', 'a'] has non-unique elements"
+
+    """
+    jsonschema.validate(instance=data, schema=_recipe_schema())
+
+
+@functools.lru_cache(maxsize=None)
+def _recipe_schema() -> Dict[str, Any]:
+    files = importlib.resources.files(NAME)
+    with importlib.resources.as_file(files / "schemas" / "recipe.json") as path:
+        return load_json(path)
 
 
 # FIXME
@@ -1350,7 +1382,7 @@ def main() -> None:
 
     try:
         cli(prog_name=NAME)
-    except (Error, binres.Error) as e:
+    except (Error, binres.Error, jsonschema.exceptions.ValidationError) as e:
         print(f"Error: {e}.", file=sys.stderr)
         sys.exit(1)
 

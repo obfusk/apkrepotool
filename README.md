@@ -282,12 +282,12 @@ $ git pull --rebase
 
 ## Dependencies
 
-Python >= 3.8 + `click` + `ruamel.yaml` + `repro-apk` >= 0.2.7.
+Python >= 3.8 + `click` + `jsonschema` + `ruamel.yaml` + `repro-apk` >= 0.2.7.
 
 ### Debian/Ubuntu
 
 ```bash
-$ apt install python3-pip python3-click python3-ruamel.yaml
+$ apt install python3-pip python3-click python3-jsonschema python3-ruamel.yaml
 $ pip install git+https://github.com/obfusk/reproducible-apk-tools.git@v0.3.0
 ```
 
