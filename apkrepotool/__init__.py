@@ -106,6 +106,17 @@ class SigError(Error):
     """Signature (verification) error."""
 
 
+class ValidationError(Error):
+    """YAML validation error."""
+
+    def __init__(self, error: jsonschema.exceptions.ValidationError, path: Path) -> None:
+        message = f"Validation failed for {str(path)!r}:\n  {error}"
+        super().__init__(message)
+        self.message = message
+        self.error = error
+        self.path = path
+
+
 @dataclass(frozen=True)
 class JavaStuff:
     """Java Stuff."""
@@ -280,7 +291,7 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
         if validate:
-            validate_recipe_yaml(data)
+            validate_recipe_yaml(data, recipe_file)
         aask = []
         anti_features: Dict[str, Dict[str, str]] = {}
         if "AllowedAPKSigningKeys" in data:
@@ -312,23 +323,34 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
             translation_url=data.get("Translation"), website_url=data.get("WebSite"))
 
 
-def validate_recipe_yaml(data: Dict[str, Any]) -> None:
+def validate_recipe_yaml(data: Dict[str, Any], path: Path) -> None:
     r"""
     Validate recipe YAML.
 
     >>> try:
-    ...     validate_recipe_yaml({})
-    ... except jsonschema.exceptions.ValidationError as e:
-    ...     e.message
+    ...     validate_recipe_yaml({}, PurePath("appid.yml"))
+    ... except ValidationError as e:
+    ...     str(e.path)
+    ...     e.error.message
+    'appid.yml'
     "'Categories' is a required property"
     >>> try:
-    ...     validate_recipe_yaml({"Categories": ["a", "a"]})
-    ... except jsonschema.exceptions.ValidationError as e:
-    ...     e.message
+    ...     validate_recipe_yaml({"Categories": ["a", "a"]}, PurePath("appid.yml"))
+    ... except ValidationError as e:
+    ...     str(e.path)
+    ...     e.error.message
+    'appid.yml'
     "['a', 'a'] has non-unique elements"
 
     """
-    jsonschema.validate(instance=data, schema=_recipe_schema())
+    _validate(data, _recipe_schema(), path)
+
+
+def _validate(data: Dict[str, Any], schema: Dict[str, Any], path: Path) -> None:
+    try:
+        jsonschema.validate(instance=data, schema=schema)
+    except jsonschema.exceptions.ValidationError as e:
+        raise ValidationError(e, path) from e
 
 
 @functools.lru_cache(maxsize=None)
@@ -339,7 +361,7 @@ def _recipe_schema() -> Dict[str, Any]:
 
 
 # FIXME
-def parse_config_yaml(config_file: Path) -> Config:
+def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
     r"""
     Parse config YAML.
 
@@ -362,6 +384,8 @@ def parse_config_yaml(config_file: Path) -> Config:
     with config_file.open(encoding="utf-8") as fh:
         yaml = YAML(typ="safe")
         data = yaml.load(fh)
+        if validate:
+            validate_config_yaml(data, config_file)
         return Config(
             repo_url=data["repo_url"], repo_name=data["repo_name"],
             repo_description=data["repo_description"], repo_keyalias=data["repo_keyalias"],
@@ -370,8 +394,31 @@ def parse_config_yaml(config_file: Path) -> Config:
             apksigner_jar=data.get("apksigner_jar"), java_home=data.get("java_home"))
 
 
+def validate_config_yaml(data: Dict[str, Any], path: Path) -> None:
+    r"""
+    Validate config YAML.
+
+    >>> try:
+    ...     validate_config_yaml({}, PurePath("config.yml"))
+    ... except ValidationError as e:
+    ...     str(e.path)
+    ...     e.error.message
+    'config.yml'
+    "'repo_url' is a required property"
+
+    """
+    _validate(data, _config_schema(), path)
+
+
+@functools.lru_cache(maxsize=None)
+def _config_schema() -> Dict[str, Any]:
+    files = importlib.resources.files(NAME)
+    with importlib.resources.as_file(files / "schemas" / "config.json") as path:
+        return load_json(path)
+
+
 # FIXME
-def parse_localised_config_yaml(config_dir: Path) -> Dict[str, LocalisedConfig]:
+def parse_localised_config_yaml(config_dir: Path, *, validate: bool = True) -> Dict[str, LocalisedConfig]:
     r"""
     Parse localised config YAML.
 
@@ -385,13 +432,38 @@ def parse_localised_config_yaml(config_dir: Path) -> Dict[str, LocalisedConfig]:
     for locale_dir in sorted(config_dir.iterdir()):
         if locale_dir.is_dir():
             config_file = locale_dir / "config.yml"
-            with open(config_file, encoding="utf-8") as fh:
+            with config_file.open(encoding="utf-8") as fh:
                 yaml = YAML(typ="safe")
                 data = yaml.load(fh)
+                if validate:
+                    validate_localised_config_yaml(data, config_file)
                 configs[locale_dir.name] = LocalisedConfig(
                     repo_name=data["repo"]["name"],
                     repo_description=data["repo"]["description"])
     return configs
+
+
+def validate_localised_config_yaml(data: Dict[str, Any], path: Path) -> None:
+    r"""
+    Validate localised config YAML.
+
+    >>> try:
+    ...     validate_localised_config_yaml({}, PurePath("config/en-US/config.yml"))
+    ... except ValidationError as e:
+    ...     str(e.path)
+    ...     e.error.message
+    'config/en-US/config.yml'
+    "'repo' is a required property"
+
+    """
+    _validate(data, _localised_config_schema(), path)
+
+
+@functools.lru_cache(maxsize=None)
+def _localised_config_schema() -> Dict[str, Any]:
+    files = importlib.resources.files(NAME)
+    with importlib.resources.as_file(files / "schemas" / "localised_config.json") as path:
+        return load_json(path)
 
 
 # FIXME
@@ -1382,7 +1454,7 @@ def main() -> None:
 
     try:
         cli(prog_name=NAME)
-    except (Error, binres.Error, jsonschema.exceptions.ValidationError) as e:
+    except (Error, binres.Error) as e:
         print(f"Error: {e}.", file=sys.stderr)
         sys.exit(1)
 

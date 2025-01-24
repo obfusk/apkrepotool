@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/obfusk/apkrepotool/master/apkrepotool/schemas/localised_config.json",
+  "title": "apkrepotool localised config",
+  "description": "apkrepotool localised configuration (config/<locale>/config.yml)",
+  "type": "object",
+  "properties": {
+    "repo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "localised repository name",
+          "type": "string"
+        },
+        "description": {
+          "description": "localised repository description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "repo"
+  ],
+  "additionalProperties": false
+}

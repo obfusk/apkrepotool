@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/obfusk/apkrepotool/master/apkrepotool/schemas/config.json",
+  "title": "apkrepotool config",
+  "description": "apkrepotool configuration (config.yml)",
+  "type": "object",
+  "properties": {
+    "repo_url": {
+      "description": "repository URL (e.g. https://example.com/test/repo/)",
+      "type": "string",
+      "pattern": "^https://.*$"
+    },
+    "repo_name": {
+      "description": "repository name",
+      "type": "string"
+    },
+    "repo_description": {
+      "description": "repository description",
+      "type": "string"
+    },
+    "repo_keyalias": {
+      "description": "keystore signing key alias (e.g. myrepo)",
+      "type": "string"
+    },
+    "keystore": {
+      "description": "path of keystore file (e.g. keystore.jks)",
+      "type": "string"
+    },
+    "keystorepass_cmd": {
+      "description": "shell command that outputs the keystore password (e.g. cat .keystorepass)",
+      "type": "string"
+    },
+    "keypass_cmd": {
+      "description": "shell command that outputs the key password (e.g. cat .keystorepass)",
+      "type": "string"
+    },
+    "apkrepotool_dir": {
+      "description": "path of apkrepotool directory (e.g. /home/user/.apkrepotool; optional)",
+      "type": "string"
+    },
+    "apksigner_jar": {
+      "description": "path of apksigner JAR file (e.g. /home/user/Android/Sdk/build-tools/35.0.0/lib/apksigner.jar; optional)",
+      "type": "string"
+    },
+    "java_home": {
+      "description": "path of JVM/JDK directory (e.g. /usr/lib/jvm/java-21-openjdk-amd64; optional)",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repo_url",
+    "repo_name",
+    "repo_description",
+    "repo_keyalias",
+    "keystore",
+    "keystorepass_cmd",
+    "keypass_cmd"
+  ],
+  "additionalProperties": false
+}

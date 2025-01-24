@@ -71,7 +71,7 @@
       "description": "FIXME"
     },
     "Categories": {
-      "description": "application categories",
+      "description": "application categories (required)",
       "type": "array",
       "items": {
         "type": "string"
