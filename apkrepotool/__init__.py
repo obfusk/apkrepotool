@@ -1194,7 +1194,7 @@ def sign_jar(cfg: Config, jar_file: Path, *, java_stuff: Optional[JavaStuff] = N
             "--ks", cfg.keystore, "--ks-key-alias", cfg.repo_keyalias,
             "--ks-pass", "env:APKREPOTOOL_KS_PASS", "--key-pass", "env:APKREPOTOOL_KEY_PASS",
             "--min-sdk-version=23", "--max-sdk-version=24", "--v1-signing-enabled=true",
-            "--v2-signing-enabled=false", "--v3-signing-enabled=false"]
+            "--v2-signing-enabled=true", "--v3-signing-enabled=false"]
     if 4 in java_stuff.apksigner_supported_schemes:
         args.append("--v4-signing-enabled=false")
     args.append(str(jar_file))
