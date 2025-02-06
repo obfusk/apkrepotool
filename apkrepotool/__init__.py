@@ -886,8 +886,9 @@ def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
     data = []
     # index is historically sorted by name
     for app in sorted(apps, key=lambda app: app.name.upper()):
+        aask = app.allowed_apk_signing_keys if app.allowed_apk_signing_keys != ["any"] else None
         entry = {
-            "allowedAPKSigningKeys": app.allowed_apk_signing_keys,
+            "allowedAPKSigningKeys": aask,
             "antiFeatures": list(app.anti_features.keys()),
             "authorEmail": app.author_email,
             "authorName": app.author_name,
