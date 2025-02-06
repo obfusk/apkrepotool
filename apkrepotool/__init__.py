@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # encoding: utf-8
-# SPDX-FileCopyrightText: 2024 FC (Fay) Stegerman <flx@obfusk.net>
+# SPDX-FileCopyrightText: 2025 FC (Fay) Stegerman <flx@obfusk.net>
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
@@ -1325,12 +1325,6 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
     return out, err
 
 
-# FIXME
-# def do_init() -> None:
-#     """Create a new repo."""
-#     raise NotImplementedError("FIXME")
-
-
 def do_link() -> None:
     """Print repo link."""
     cfg = parse_config_yaml(Path("config.yml"))
@@ -1432,12 +1426,6 @@ def main() -> None:
     @click.version_option(__version__)
     def cli() -> None:
         pass
-
-    # @cli.command(help="""
-    #     create a new repo
-    # """)
-    # def init(*args: Any, **kwargs: Any) -> None:
-    #     do_init(*args, **kwargs)
 
     @cli.command(help="""
         print repo link
