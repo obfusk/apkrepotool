@@ -256,6 +256,24 @@ class Metadata:
     phone_screenshots_files: List[FileInfo] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ToolConfig:
+    """Current apkrepotool config."""
+    cur_dir: Path
+    meta_dir: Path
+    repo_dir: Path
+    cache_dir: Path
+    config_file: Path
+    config_dir: Path
+    cfg: Optional[Config]
+    localised_cfgs: Dict[str, LocalisedConfig]
+    apk_paths: List[Path]
+    recipe_paths: List[Path]
+    appids: Set[str]
+    timestamp: int
+    java_stuff: JavaStuff
+
+
 # FIXME
 def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
                       validate: bool = True) -> App:
@@ -1325,12 +1343,33 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
     return out, err
 
 
+def tool_config(*, verbose: int = 0, cfg_required: bool = True) -> ToolConfig:
+    """Get apkrepotool config."""
+    paths = (".", "metadata", "repo", "cache", "config.yml", "config")
+    cur_dir, meta_dir, repo_dir, cache_dir, config_file, config_dir = [Path(p) for p in paths]
+    cfg = parse_config_yaml(config_file) if config_file.exists() else None
+    if not cfg and cfg_required:
+        raise Error("No config.yml")
+    localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
+    apk_paths = sorted(repo_dir.glob("*.apk"))
+    recipe_paths = sorted(meta_dir.glob("*.yml"))
+    appids = set(recipe.stem for recipe in recipe_paths)
+    timestamp = int(time.time()) * 1000
+    java_stuff = JavaStuff.load(cfg=cfg, verbose=verbose)
+    return ToolConfig(
+        cur_dir=cur_dir, meta_dir=meta_dir, repo_dir=repo_dir, cache_dir=cache_dir,
+        config_file=config_file, config_dir=config_dir, cfg=cfg, localised_cfgs=localised_cfgs,
+        apk_paths=apk_paths, recipe_paths=recipe_paths, appids=appids, timestamp=timestamp,
+        java_stuff=java_stuff)
+
+
+# FIXME: make hook
 def do_link() -> None:
     """Print repo link."""
-    cfg = parse_config_yaml(Path("config.yml"))
-    java_stuff = JavaStuff.load(cfg=cfg)
-    fpr = get_keystore_cert_fingerprint(cfg, java_stuff).upper()
-    url = urlparse(cfg.repo_url)
+    tc = tool_config()
+    assert tc.cfg is not None
+    fpr = get_keystore_cert_fingerprint(tc.cfg, tc.java_stuff).upper()
+    url = urlparse(tc.cfg.repo_url)
     if not url.path.endswith("/"):
         url = url._replace(path=f"{url.path}/")
     url = url._replace(query=f"fingerprint={fpr}")
@@ -1338,33 +1377,47 @@ def do_link() -> None:
 
 
 # FIXME
-# FIXME: --pretty, --no-sign
+# FIXME: --continue-on-errors, --pretty, --no-sign
 def do_update(verbose: int = 0) -> None:
     """Update index."""
-    paths = (".", "metadata", "repo", "cache", "config.yml", "config")
-    cur_dir, meta_dir, repo_dir, cache_dir, config_file, config_dir = [Path(p) for p in paths]
-    timestamp = int(time.time()) * 1000
-    cfg = parse_config_yaml(config_file)
-    localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
-    java_stuff = JavaStuff.load(cfg=cfg, verbose=verbose)
+    tc = tool_config(verbose=verbose)
+    assert tc.cfg is not None
     apks: Dict[str, Dict[int, Apk]] = {}
-    apps, meta, aask, one_signer_only = [], {}, {}, {}
+    apps: List[App] = []
+    meta: Dict[str, Dict[str, Metadata]] = {}
+    aask: Dict[str, List[str]] = {}
+    one_signer_only: Dict[str, bool] = {}
     times: Dict[str, Set[int]] = {}
-    recipes = sorted(meta_dir.glob("*.yml"))
-    appids = set(recipe.stem for recipe in recipes)
-    timestamps = load_timestamps(cur_dir)
+    timestamps = load_timestamps(tc.cur_dir)
     if verbose > 1:
-        print(f"Config locales: {list(localised_cfgs.keys())}.")
-    for apkfile in sorted(repo_dir.glob("*.apk")):
+        print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
+    process_apks(tc, apks=apks, times=times, timestamps=timestamps, verbose=verbose)
+    process_recipes(tc, apks=apks, apps=apps, meta=meta, aask=aask,
+                    one_signer_only=one_signer_only, verbose=verbose)
+    check_aask(apks=apks, aask=aask, one_signer_only=one_signer_only)
+    added = {k: min(v) for k, v in times.items()}
+    updated = {k: max(v) for k, v in times.items()}
+    make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=apps, apks=apks,
+               meta=meta, cfg=tc.cfg, localised_cfgs=tc.localised_cfgs, added=added,
+               updated=updated, ts=tc.timestamp, verbose=verbose)
+    sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
+    save_timestamps(tc.cur_dir, timestamps)
+
+
+# FIXME: --continue-on-errors
+def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict[str, Set[int]],
+                 timestamps: Dict[str, int], verbose: int = 0) -> None:
+    """Process APKs (tc.apk_paths)."""
+    for apkfile in tc.apk_paths:
         if verbose:
             print(f"Processing {str(apkfile)!r}...")
         if apkfile.name not in timestamps:
-            timestamps[apkfile.name] = timestamp
-        apk = get_apk_info(apkfile, timestamps[apkfile.name], java_stuff=java_stuff)
+            timestamps[apkfile.name] = tc.timestamp
+        apk = get_apk_info(apkfile, timestamps[apkfile.name], java_stuff=tc.java_stuff)
         man = apk.manifest
         if verbose:
             print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
-        if man.appid not in appids:
+        if man.appid not in tc.appids:
             raise Error(f"APK without recipe: {str(apkfile)!r} ({man.appid!r})")
         if man.appid not in apks:
             apks[man.appid] = {}
@@ -1374,17 +1427,22 @@ def do_update(verbose: int = 0) -> None:
         if man.appid not in times:
             times[man.appid] = set()
         times[man.appid].add(timestamps[apkfile.name])
-    for recipe in recipes:
+
+
+def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: List[App],
+                    meta: Dict[str, Dict[str, Metadata]], aask: Dict[str, List[str]],
+                    one_signer_only: Dict[str, bool], verbose: int = 0) -> None:
+    """Process recipes (tc.recipe_paths)."""
+    for recipe in tc.recipe_paths:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
-        appid = recipe.stem
-        if appid not in apks:
+        if (appid := recipe.stem) not in apks:
             raise Error(f"recipe without APKs: {appid!r}")
         version_codes = sorted(apks[appid].keys())
         app = parse_recipe_yaml(recipe, version_codes[-1])
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
-            meta[appid] = parse_app_metadata(app_dir, repo_dir, version_codes)
+            meta[appid] = parse_app_metadata(app_dir, tc.repo_dir, version_codes)
             if verbose > 1:
                 print(f"  Metadata locales: {list(meta[appid].keys())}.")
         if not app.allowed_apk_signing_keys:
@@ -1395,6 +1453,13 @@ def do_update(verbose: int = 0) -> None:
         aask[appid] = app.allowed_apk_signing_keys
         one_signer_only[appid] = app.one_signer_only
         apps.append(app)
+
+
+# FIXME: disallow v1 only (w/ setting and per-apt opt-out)
+# FIXME: --continue-on-errors
+def check_aask(*, apks: Dict[str, Dict[int, Apk]], aask: Dict[str, List[str]],
+               one_signer_only: Dict[str, bool]) -> None:
+    """Check allowed_apk_signing_keys."""
     for appid, versions in apks.items():
         for apk in versions.values():
             filename, signers = apk.filename, aask[appid]
@@ -1405,13 +1470,6 @@ def do_update(verbose: int = 0) -> None:
             missing = [k for k in apk.signing_keys if k not in signers]
             if missing and signers != ["any"]:
                 raise Error(f"Unallowed signer(s) for {filename!r}: {missing}")
-    added = {k: min(v) for k, v in times.items()}
-    updated = {k: max(v) for k, v in times.items()}
-    make_index(repo_dir=repo_dir, cache_dir=cache_dir, apps=apps, apks=apks, meta=meta,
-               cfg=cfg, localised_cfgs=localised_cfgs, added=added, updated=updated,
-               ts=timestamp, verbose=verbose)
-    sign_index(repo_dir, cfg, verbose=verbose, java_stuff=java_stuff)
-    save_timestamps(cur_dir, timestamps)
 
 
 # FIXME
