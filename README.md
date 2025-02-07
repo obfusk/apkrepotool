@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2024 FC (Fay) Stegerman <flx@obfusk.net> -->
+<!-- SPDX-FileCopyrightText: 2025 FC (Fay) Stegerman <flx@obfusk.net> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 
 [![GitHub Release](https://img.shields.io/github/release/obfusk/apkrepotool.svg?logo=github)](https://github.com/obfusk/apkrepotool/releases)
@@ -72,6 +72,10 @@ $ vim config.yml
 
 ## CLI
 
+NB: `apkrepotool` should not be run in untrusted directories as accessing the
+keystore will run shell commands specified in `config.yml` and hooks defined in
+`config.yml` run Python code in `hooks/*.py`.
+
 NB: `apkrepotool` will save a `Cert.java` (and `Cert.class` if `javac` is
 available and can compile `Cert.java`) in `~/.apkrepotool` (unless a different
 `apkrepotool_dir` is specified in `config.yml`); these are needed to interface
@@ -113,6 +117,7 @@ Options:
 
 Commands:
   link    print repo link
+  lint    lint recipes
   update  generate/update index
 $ apkrepotool link --help
 [...]
@@ -251,6 +256,10 @@ AllowedAPKSigningKeys: d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af6
 CurrentVersion: 2.29.0
 CurrentVersionCode: 134
 ```
+
+## Hooks
+
+FIXME
 
 ## Installing
 
