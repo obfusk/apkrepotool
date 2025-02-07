@@ -1538,7 +1538,7 @@ def main() -> None:
     def _cli_hook(hook: Hook) -> None:
         cs = dict(ignore_unknown_options=True)
 
-        @cli.command(name=hook.name, help=hook.info, context_settings=cs)
+        @cli.command(name=hook.name, help=hook.info, add_help_option=False, context_settings=cs)
         @click.argument("args", nargs=-1)
         def f(args: Tuple[str, ...]) -> None:
             if hook.cfg_required and not tc.cfg:

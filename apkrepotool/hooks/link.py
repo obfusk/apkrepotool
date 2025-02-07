@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from urllib.parse import urlparse
 
 import apkrepotool
@@ -13,8 +15,8 @@ import apkrepotool
 def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
     """Print repo link."""
     assert tc.cfg is not None
-    if args:
-        raise apkrepotool.Error(f"Got unexpected extra arguments ({' '.join(args)})")
+    parser = argparse.ArgumentParser(prog="apkrepotool link")
+    parser.parse_args(args)
     fpr = apkrepotool.get_keystore_cert_fingerprint(tc.cfg, tc.java_stuff).upper()
     url = urlparse(tc.cfg.repo_url)
     if not url.path.endswith("/"):
