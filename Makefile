@@ -82,7 +82,7 @@ clean: cleanup
 
 cleanup:
 	find -name '*~' -delete -print
-	rm -fr apkrepotool/__pycache__/ .mypy_cache/
+	rm -fr apkrepotool/__pycache__/ apkrepotool/hooks/__pycache__/ .mypy_cache/
 	rm -fr build/ dist/ .tmp/ .coverage htmlcov/
 
 .PHONY: _package _publish
