@@ -19,18 +19,19 @@ import binascii
 import functools
 import hashlib
 import importlib.resources
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+import types
 import zipfile
 
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 from typing import Any, Dict, List, Optional, Set, Tuple
-from urllib.parse import urlparse
 
 import repro_apk.binres as binres
 import jsonschema
@@ -272,6 +273,24 @@ class ToolConfig:
     appids: Set[str]
     timestamp: int
     java_stuff: JavaStuff
+
+
+@dataclass(frozen=True)
+class Hook:
+    """Hook/plugin."""
+    name: str
+    info: str
+    builtin: bool
+    cfg_required: bool = True
+
+    @property
+    def module_name(self) -> str:
+        """Module name (apkrepotool.hooks.myhook)."""
+        return f"{NAME}.hooks.{self.name}"
+
+    def load(self, tc: ToolConfig) -> types.ModuleType:
+        """Load hook."""
+        return load_hook(self, tc)
 
 
 # FIXME
@@ -1344,13 +1363,11 @@ def run_command(*args: str, env: Optional[Dict[str, str]] = None, keepenv: bool 
     return out, err
 
 
-def tool_config(*, verbose: int = 0, cfg_required: bool = True) -> ToolConfig:
+def tool_config(*, verbose: int = 0) -> ToolConfig:
     """Get apkrepotool config."""
     paths = (".", "metadata", "repo", "cache", "config.yml", "config")
     cur_dir, meta_dir, repo_dir, cache_dir, config_file, config_dir = [Path(p) for p in paths]
     cfg = parse_config_yaml(config_file) if config_file.exists() else None
-    if not cfg and cfg_required:
-        raise Error("No config.yml")
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
     apk_paths = sorted(repo_dir.glob("*.apk"))
     recipe_paths = sorted(meta_dir.glob("*.yml"))
@@ -1364,25 +1381,41 @@ def tool_config(*, verbose: int = 0, cfg_required: bool = True) -> ToolConfig:
         java_stuff=java_stuff)
 
 
-# FIXME: make hook
-def do_link() -> None:
-    """Print repo link."""
-    tc = tool_config()
-    assert tc.cfg is not None
-    fpr = get_keystore_cert_fingerprint(tc.cfg, tc.java_stuff).upper()
-    url = urlparse(tc.cfg.repo_url)
-    if not url.path.endswith("/"):
-        url = url._replace(path=f"{url.path}/")
-    url = url._replace(query=f"fingerprint={fpr}")
-    print(url.geturl())
+# FIXME: require config to allow hooks for non-builtin?!
+def load_hook(hook: Hook, tc: ToolConfig) -> types.ModuleType:
+    """Load hook."""
+    if hook.module_name in sys.modules:
+        return sys.modules[hook.module_name]
+    if hook.builtin:
+        files = importlib.resources.files(NAME)
+        with importlib.resources.as_file(files / "hooks" / f"{hook.name}.py") as path:
+            spec = importlib.util.spec_from_file_location(hook.module_name, path)
+    else:
+        path = tc.cur_dir / "hooks" / f"{hook.name}.py"
+        spec = importlib.util.spec_from_file_location(hook.module_name, path)
+    if not spec or not spec.loader:
+        raise Error(f"Could not load hook {hook.name!r} (from {str(path)!r})")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[hook.module_name] = module
+    _loaded_hooks[hook.module_name] = hook
+    spec.loader.exec_module(module)
+    return module
+
+
+_loaded_hooks: Dict[str, Hook] = {}
+_hooks = {
+    h.name: h for h in [
+        Hook("link", info="print repo link", builtin=True),
+    ]
+}
 
 
 # FIXME
 # FIXME: --continue-on-errors, --pretty, --no-sign
-def do_update(verbose: int = 0) -> None:
+def do_update(tc: ToolConfig, verbose: int = 0) -> None:
     """Update index."""
-    tc = tool_config(verbose=verbose)
-    assert tc.cfg is not None
+    if not tc.cfg:
+        raise Error("No config.yml")
     apks: Dict[str, Dict[int, Apk]] = {}
     apps: List[App] = []
     meta: Dict[str, Dict[str, Metadata]] = {}
@@ -1479,6 +1512,9 @@ def main() -> None:
 
     import click
 
+    # FIXME: verbose?!
+    tc = tool_config()
+
     @click.group(help="""
         apkrepotool - manage APK repos
     """)
@@ -1487,17 +1523,25 @@ def main() -> None:
         pass
 
     @cli.command(help="""
-        print repo link
-    """)
-    def link(*args: Any, **kwargs: Any) -> None:
-        do_link(*args, **kwargs)
-
-    @cli.command(help="""
         generate/update index
     """)
     @click.option("-v", "--verbose", count=True, help="Increase verbosity.")
     def update(*args: Any, **kwargs: Any) -> None:
-        do_update(*args, **kwargs)
+        do_update(tc, *args, **kwargs)
+
+    def _cli_hook(hook: Hook) -> None:
+        cs = dict(ignore_unknown_options=True)
+
+        @cli.command(name=hook.name, help=hook.info, context_settings=cs)
+        @click.argument("args", nargs=-1)
+        def f(args: Tuple[str, ...]) -> None:
+            if hook.cfg_required and not tc.cfg:
+                raise Error("No config.yml")
+            hook.load(tc).run(tc, *args)
+
+    # FIXME: load non-builtin hooks
+    for hook in _hooks.values():
+        _cli_hook(hook)
 
     try:
         cli(prog_name=NAME)

@@ -20,11 +20,11 @@ test-cli:
 	$(APKREPOTOOL) --version
 
 doctest:
-	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py
+	APKREPOTOOL_DIR=.tmp $(PYTHON) -m doctest apkrepotool/*.py apkrepotool/hooks/*.py
 
 coverage:
 	rm -fr .tmp/
-	APKREPOTOOL_DIR=.tmp $(PYCOV) -m doctest apkrepotool/*.py
+	APKREPOTOOL_DIR=.tmp $(PYCOV) -m doctest apkrepotool/*.py apkrepotool/hooks/*.py
 	$(MAKE) test-repo APKREPOTOOL="$(PYCOV) -a -m apkrepotool.__init__"
 	$(PYTHON) -mcoverage html --data-file=$(PWD)/.coverage
 	$(PYTHON) -mcoverage report --data-file=$(PWD)/.coverage
@@ -71,11 +71,11 @@ test-repo:
 	     D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D )
 
 lint:
-	flake8 apkrepotool/*.py
-	pylint apkrepotool/*.py
+	flake8 apkrepotool/*.py apkrepotool/hooks/*.py
+	pylint apkrepotool/*.py apkrepotool/hooks/*.py
 
 lint-extra:
-	mypy --strict --disallow-any-unimported apkrepotool/*.py
+	mypy --strict --disallow-any-unimported apkrepotool/*.py apkrepotool/hooks/*.py
 
 clean: cleanup
 	rm -fr apkrepotool.egg-info/

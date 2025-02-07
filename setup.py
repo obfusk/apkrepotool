@@ -42,7 +42,7 @@ setuptools.setup(
     keywords="android apk repo",
     entry_points=dict(console_scripts=["apkrepotool = apkrepotool:main"]),
     packages=["apkrepotool"],
-    package_data=dict(apkrepotool=["py.typed", "schemas/*.json"]),
+    package_data=dict(apkrepotool=["py.typed", "hooks/*.py", "schemas/*.json"]),
     python_requires=">=3.9",
     install_requires=["click>=6.0", "jsonschema", "repro-apk>=0.2.7", "ruamel.yaml"],
 )
