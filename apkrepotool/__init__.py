@@ -277,7 +277,12 @@ class ToolConfig:
 
 @dataclass(frozen=True)
 class Hook:
-    """Hook/plugin."""
+    """
+    Hook/plugin.
+
+    "The function of art is to do more than tell it like it is-it’s to imagine
+    what is possible." -bell hooks
+    """
     name: str
     info: str
     builtin: bool
