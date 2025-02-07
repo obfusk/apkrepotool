@@ -287,7 +287,6 @@ class Hook:
     name: str
     info: str
     builtin: bool
-    cfg_required: bool = True
 
     @property
     def module_name(self) -> str:
@@ -1547,8 +1546,6 @@ def main() -> None:
         @cli.command(name=hook.name, help=hook.info, add_help_option=False, context_settings=cs)
         @click.argument("args", nargs=-1)
         def f(args: Tuple[str, ...]) -> None:
-            if hook.cfg_required and not tc.cfg:
-                raise Error("No config.yml")
             hook.load(tc).run(tc, *args)
 
     # FIXME: load non-builtin hooks

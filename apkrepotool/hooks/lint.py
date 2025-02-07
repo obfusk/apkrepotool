@@ -12,7 +12,6 @@ import apkrepotool
 
 def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
     """Lint recipes."""
-    assert tc.cfg is not None
     parser = argparse.ArgumentParser(prog="apkrepotool lint")
     parser.add_argument("-v", "--verbose", action="store_true")
     opts = parser.parse_args(args)

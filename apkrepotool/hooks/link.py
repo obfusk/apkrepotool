@@ -14,9 +14,10 @@ import apkrepotool
 
 def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
     """Print repo link."""
-    assert tc.cfg is not None
     parser = argparse.ArgumentParser(prog="apkrepotool link")
     parser.parse_args(args)
+    if not tc.cfg:
+        raise apkrepotool.Error("No config.yml")
     fpr = apkrepotool.get_keystore_cert_fingerprint(tc.cfg, tc.java_stuff).upper()
     url = urlparse(tc.cfg.repo_url)
     if not url.path.endswith("/"):
