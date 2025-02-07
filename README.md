@@ -72,9 +72,10 @@ $ vim config.yml
 
 ## CLI
 
-NB: `apkrepotool` should not be run in untrusted directories as accessing the
-keystore will run shell commands specified in `config.yml` and hooks defined in
-`config.yml` run Python code in `hooks/*.py`.
+NB: `apkrepotool` should only be run in trusted directories under your control
+as `config.yml` contains e.g. shell commands to be run to access the keystore,
+can set `apkrepotool_dir` from which Java code will be executed, and can define
+hooks that run Python code from `hooks/*.py`.
 
 NB: `apkrepotool` will save a `Cert.java` (and `Cert.class` if `javac` is
 available and can compile `Cert.java`) in `~/.apkrepotool` (unless a different
