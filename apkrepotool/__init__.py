@@ -1406,6 +1406,7 @@ _loaded_hooks: Dict[str, Hook] = {}
 _hooks = {
     h.name: h for h in [
         Hook("link", info="print repo link", builtin=True),
+        Hook("lint", info="lint recipes", builtin=True),
     ]
 }
 
