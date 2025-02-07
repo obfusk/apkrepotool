@@ -41,6 +41,7 @@ from ruamel.yaml import YAML
 __version__ = "0.0.1"
 NAME = "apkrepotool"
 
+# FIXME: use XDG_DATA_HOME/XDG_CONFIG_HOME/XDG_STATE_HOME?!
 if os.environ.get("APKREPOTOOL_DIR"):
     APKREPOTOOL_DIR = Path(os.environ["APKREPOTOOL_DIR"])
 else:
@@ -1384,6 +1385,11 @@ def tool_config(*, verbose: int = 0) -> ToolConfig:
         config_file=config_file, config_dir=config_dir, cfg=cfg, localised_cfgs=localised_cfgs,
         apk_paths=apk_paths, recipe_paths=recipe_paths, appids=appids, timestamp=timestamp,
         java_stuff=java_stuff)
+
+
+def run_hook(hook: str, tc: ToolConfig, *args: str) -> None:
+    """Run hook."""
+    _hooks[hook].load(tc).run(tc, *args)
 
 
 # FIXME: require config to allow hooks for non-builtin?!
