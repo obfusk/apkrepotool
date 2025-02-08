@@ -45,6 +45,50 @@
     "java_home": {
       "description": "path of JVM/JDK directory (e.g. /usr/lib/jvm/java-21-openjdk-amd64; optional)",
       "type": "string"
+    },
+    "aliases": {
+      "description": "CLI aliases",
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "hooks": {
+      "description": "CLI hooks (hooks/*.py)",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "info": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "info"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

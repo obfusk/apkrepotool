@@ -208,6 +208,14 @@ class Apk:
     manifest: Manifest
 
 
+@dataclass(frozen=True)
+class HookConfig:
+    """Hook config."""
+    name: str
+    info: str
+    config: Dict[str, Any]
+
+
 # FIXME
 @dataclass(frozen=True)
 class Config:
@@ -222,6 +230,8 @@ class Config:
     apkrepotool_dir: Optional[str] = None
     apksigner_jar: Optional[str] = None
     java_home: Optional[str] = None
+    aliases: Dict[str, List[str]] = field(default_factory=dict)
+    hooks: Dict[str, HookConfig] = field(default_factory=dict)
 
 
 # FIXME
@@ -278,11 +288,18 @@ class ToolConfig:
 
 @dataclass(frozen=True)
 class Hook:
-    """
+    r"""
     Hook/plugin.
 
     "The function of art is to do more than tell it like it is-it’s to imagine
     what is possible." -bell hooks
+
+    >>> h = Hook("update-foo", info="update foo", builtin=False)
+    >>> h
+    Hook(name='update-foo', info='update foo', builtin=False)
+    >>> h.module_name
+    'apkrepotool.hooks.update_foo'
+
     """
     name: str
     info: str
@@ -291,7 +308,7 @@ class Hook:
     @property
     def module_name(self) -> str:
         """Module name (apkrepotool.hooks.myhook)."""
-        return f"{NAME}.hooks.{self.name}"
+        return f"{NAME}.hooks.{self.name}".replace("-", "_")
 
     def load(self, tc: ToolConfig) -> types.ModuleType:
         """Load hook."""
@@ -421,6 +438,8 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
     apkrepotool_dir='/path/to/apkrepotool_dir'
     apksigner_jar='/path/to/apksigner.jar'
     java_home='/usr/lib/jvm/java-11-openjdk-amd64'
+    aliases={}
+    hooks={}
 
     """
     with config_file.open(encoding="utf-8") as fh:
@@ -428,12 +447,22 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
         data = yaml.load(fh)
         if validate:
             validate_config_yaml(data, config_file)
+        aliases = {k: [v] if isinstance(v, str) else v for k, v in data.get("aliases", {}).items()}
+        for alias in aliases:
+            if alias in _hooks:
+                raise Error(f"Conflicting alias: {alias!r}")
+        hooks = {}
+        for h in data.get("hooks", []):
+            if h["name"] in hooks or h["name"] in _hooks or h["name"] in aliases:
+                raise Error(f"Conflicting hook: {h['name']!r}")
+            hooks[h["name"]] = HookConfig(h["name"], info=h["info"], config=h.get("config", {}))
         return Config(
             repo_url=data["repo_url"], repo_name=data["repo_name"],
             repo_description=data["repo_description"], repo_keyalias=data["repo_keyalias"],
             keystore=data["keystore"], keystorepass_cmd=data["keystorepass_cmd"],
             keypass_cmd=data["keypass_cmd"], apkrepotool_dir=data.get("apkrepotool_dir"),
-            apksigner_jar=data.get("apksigner_jar"), java_home=data.get("java_home"))
+            apksigner_jar=data.get("apksigner_jar"), java_home=data.get("java_home"),
+            aliases=aliases, hooks=hooks)
 
 
 def validate_config_yaml(data: Dict[str, Any], path: Path) -> None:
@@ -1523,8 +1552,12 @@ def main() -> None:
 
     import click
 
-    # FIXME: verbose?!
-    tc = tool_config()
+    try:
+        # FIXME: verbose?!
+        tc = tool_config()
+    except Error as e:
+        print(f"Error: {e}.", file=sys.stderr)
+        sys.exit(1)
 
     @click.group(help="""
         apkrepotool - manage APK repos
@@ -1540,6 +1573,20 @@ def main() -> None:
     def update(*args: Any, **kwargs: Any) -> None:
         do_update(tc, *args, **kwargs)
 
+    def _cli_alias(alias: str, commands: List[str]) -> None:
+        cs = dict(ignore_unknown_options=True)
+        info = f"alias for {', '.join(commands)}"
+
+        @cli.command(name=alias, help=info, add_help_option=False, context_settings=cs)
+        @click.argument("args", nargs=-1)
+        def f(args: Tuple[str, ...]) -> None:
+            for command in commands:
+                try:
+                    cli(prog_name=NAME, args=command.split() + list(args))
+                except SystemExit as e:
+                    if e.code != 0:
+                        raise
+
     def _cli_hook(hook: Hook) -> None:
         cs = dict(ignore_unknown_options=True)
 
@@ -1548,7 +1595,12 @@ def main() -> None:
         def f(args: Tuple[str, ...]) -> None:
             hook.load(tc).run(tc, *args)
 
-    # FIXME: load non-builtin hooks
+    if tc.cfg:
+        for alias, commands in tc.cfg.aliases.items():
+            _cli_alias(alias, commands)
+        for hcfg in tc.cfg.hooks.values():
+            _hooks[hcfg.name] = Hook(hcfg.name, info=hcfg.info, builtin=False)
+
     for hook in _hooks.values():
         _cli_hook(hook)
 
