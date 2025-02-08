@@ -441,7 +441,7 @@ def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
     ...
 ```
 
-<details>
+</details>
 
 ## Installing
 
