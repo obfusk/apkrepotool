@@ -111,8 +111,8 @@ class SigError(Error):
 class ValidationError(Error):
     """YAML validation error."""
 
-    def __init__(self, error: jsonschema.exceptions.ValidationError, path: Path) -> None:
-        message = f"Validation failed for {str(path)!r}:\n  {error}"
+    def __init__(self, error: jsonschema.exceptions.ValidationError, path: str) -> None:
+        message = f"Validation failed for {path!r}:\n  {error}"
         super().__init__(message)
         self.message = message
         self.error = error
@@ -392,23 +392,23 @@ def validate_recipe_yaml(data: Dict[str, Any], path: Path) -> None:
     >>> try:
     ...     validate_recipe_yaml({}, PurePath("appid.yml"))
     ... except ValidationError as e:
-    ...     str(e.path)
+    ...     e.path
     ...     e.error.message
     'appid.yml'
     "'Categories' is a required property"
     >>> try:
     ...     validate_recipe_yaml({"Categories": ["a", "a"]}, PurePath("appid.yml"))
     ... except ValidationError as e:
-    ...     str(e.path)
+    ...     e.path
     ...     e.error.message
     'appid.yml'
     "['a', 'a'] has non-unique elements"
 
     """
-    validate_against_schema(data, _recipe_schema(), path)
+    validate_against_schema(data, _recipe_schema(), str(path))
 
 
-def validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any], path: Path) -> None:
+def validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any], path: str) -> None:
     try:
         jsonschema.validate(instance=data, schema=schema)
     except jsonschema.exceptions.ValidationError as e:
@@ -480,13 +480,13 @@ def validate_config_yaml(data: Dict[str, Any], path: Path) -> None:
     >>> try:
     ...     validate_config_yaml({}, PurePath("config.yml"))
     ... except ValidationError as e:
-    ...     str(e.path)
+    ...     e.path
     ...     e.error.message
     'config.yml'
     "'repo_url' is a required property"
 
     """
-    validate_against_schema(data, _config_schema(), path)
+    validate_against_schema(data, _config_schema(), str(path))
 
 
 @functools.lru_cache(maxsize=None)
@@ -529,13 +529,13 @@ def validate_localised_config_yaml(data: Dict[str, Any], path: Path) -> None:
     >>> try:
     ...     validate_localised_config_yaml({}, PurePath("config/en-US/config.yml"))
     ... except ValidationError as e:
-    ...     str(e.path)
+    ...     e.path
     ...     e.error.message
     'config/en-US/config.yml'
     "'repo' is a required property"
 
     """
-    validate_against_schema(data, _localised_config_schema(), path)
+    validate_against_schema(data, _localised_config_schema(), str(path))
 
 
 @functools.lru_cache(maxsize=None)
