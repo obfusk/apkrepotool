@@ -402,10 +402,10 @@ def validate_recipe_yaml(data: Dict[str, Any], path: Path) -> None:
     "['a', 'a'] has non-unique elements"
 
     """
-    _validate(data, _recipe_schema(), path)
+    validate_against_schema(data, _recipe_schema(), path)
 
 
-def _validate(data: Dict[str, Any], schema: Dict[str, Any], path: Path) -> None:
+def validate_against_schema(data: Dict[str, Any], schema: Dict[str, Any], path: Path) -> None:
     try:
         jsonschema.validate(instance=data, schema=schema)
     except jsonschema.exceptions.ValidationError as e:
@@ -478,7 +478,7 @@ def validate_config_yaml(data: Dict[str, Any], path: Path) -> None:
     "'repo_url' is a required property"
 
     """
-    _validate(data, _config_schema(), path)
+    validate_against_schema(data, _config_schema(), path)
 
 
 @functools.lru_cache(maxsize=None)
@@ -527,7 +527,7 @@ def validate_localised_config_yaml(data: Dict[str, Any], path: Path) -> None:
     "'repo' is a required property"
 
     """
-    _validate(data, _localised_config_schema(), path)
+    validate_against_schema(data, _localised_config_schema(), path)
 
 
 @functools.lru_cache(maxsize=None)
