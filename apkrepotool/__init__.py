@@ -448,9 +448,14 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
         if validate:
             validate_config_yaml(data, config_file)
         aliases = {k: [v] if isinstance(v, str) else v for k, v in data.get("aliases", {}).items()}
-        for alias in aliases:
+        for alias, commands in aliases.items():
             if alias in _hooks:
                 raise Error(f"Conflicting alias: {alias!r}")
+            for command in commands:
+                if not (args := command.split()):
+                    raise Error(f"Alias with empty command: {alias!r}")
+                if args[0] in aliases:
+                    raise Error(f"Recursive alias: {alias!r}")
         hooks = {}
         for h in data.get("hooks", []):
             if h["name"] in hooks or h["name"] in _hooks or h["name"] in aliases:
