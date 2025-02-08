@@ -1,0 +1,15 @@
+Usage: apkrepotool [OPTIONS] COMMAND [ARGS]...
+
+  apkrepotool - manage APK repos
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  example  example hook
+  link     print repo link
+  lint     lint recipes
+  test     alias for lint, update -v, link, example
+  u        alias for update
+  update   generate/update index

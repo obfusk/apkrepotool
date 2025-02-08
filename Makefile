@@ -69,6 +69,10 @@ test-repo:
 	diff -Naur <( cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) link ) \
 	  <( printf '%s%s\n' https://example.com/test/repo/?fingerprint= \
 	     D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D )
+	diff -Naur <( cd test/test-repo && APKREPOTOOL_DIR=.tmp COLUMNS=80 \
+	              $(APKREPOTOOL) --help ) test/test-repo-help
+	diff -Naur <( cd test/test-repo && APKREPOTOOL_DIR=.tmp PYTHONUNBUFFERED=1 \
+	              $(APKREPOTOOL) test | grep -Ev 'diff/|cache/' ) test/test-repo-test
 
 lint:
 	flake8 apkrepotool/*.py apkrepotool/hooks/*.py
