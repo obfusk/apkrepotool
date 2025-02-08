@@ -279,11 +279,14 @@ class ToolConfig:
     config_dir: Path
     cfg: Optional[Config]
     localised_cfgs: Dict[str, LocalisedConfig]
-    apk_paths: List[Path]
     recipe_paths: List[Path]
     appids: Set[str]
     timestamp: int
     java_stuff: JavaStuff
+
+    def apk_paths(self) -> List[Path]:
+        """APK paths."""
+        return sorted(self.repo_dir.glob("*.apk"))
 
 
 @dataclass(frozen=True)
@@ -1408,7 +1411,6 @@ def tool_config(*, verbose: int = 0) -> ToolConfig:
     cur_dir, meta_dir, repo_dir, cache_dir, config_file, config_dir = [Path(p) for p in paths]
     cfg = parse_config_yaml(config_file) if config_file.exists() else None
     localised_cfgs = parse_localised_config_yaml(config_dir) if config_dir.exists() else {}
-    apk_paths = sorted(repo_dir.glob("*.apk"))
     recipe_paths = sorted(meta_dir.glob("*.yml"))
     appids = set(recipe.stem for recipe in recipe_paths)
     timestamp = int(time.time()) * 1000
@@ -1416,8 +1418,7 @@ def tool_config(*, verbose: int = 0) -> ToolConfig:
     return ToolConfig(
         cur_dir=cur_dir, meta_dir=meta_dir, repo_dir=repo_dir, cache_dir=cache_dir,
         config_file=config_file, config_dir=config_dir, cfg=cfg, localised_cfgs=localised_cfgs,
-        apk_paths=apk_paths, recipe_paths=recipe_paths, appids=appids, timestamp=timestamp,
-        java_stuff=java_stuff)
+        recipe_paths=recipe_paths, appids=appids, timestamp=timestamp, java_stuff=java_stuff)
 
 
 def run_hook(hook: str, tc: ToolConfig, *args: str) -> None:
@@ -1486,8 +1487,12 @@ def do_update(tc: ToolConfig, verbose: int = 0) -> None:
 # FIXME: --continue-on-errors
 def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict[str, Set[int]],
                  timestamps: Dict[str, int], verbose: int = 0) -> None:
-    """Process APKs (tc.apk_paths)."""
-    for apkfile in tc.apk_paths:
+    """
+    Process APKs (tc.apk_paths).
+
+    NB: modifies data!
+    """
+    for apkfile in tc.apk_paths():
         if verbose:
             print(f"Processing {str(apkfile)!r}...")
         if apkfile.name not in timestamps:
@@ -1511,7 +1516,11 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict
 def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: List[App],
                     meta: Dict[str, Dict[str, Metadata]], aask: Dict[str, List[str]],
                     one_signer_only: Dict[str, bool], verbose: int = 0) -> None:
-    """Process recipes (tc.recipe_paths)."""
+    """
+    Process recipes (tc.recipe_paths).
+
+    NB: modifies data!
+    """
     for recipe in tc.recipe_paths:
         if verbose:
             print(f"Processing {str(recipe)!r}...")
