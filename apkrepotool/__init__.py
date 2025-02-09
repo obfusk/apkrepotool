@@ -1003,8 +1003,7 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
         for apk in sorted(versions.values(), key=lambda apk: apk.manifest.version_code,
                           reverse=True):
             man = apk.manifest
-            if appid not in data:
-                data[appid] = []
+            data.setdefault(appid, [])
             entry = {
                 "added": apk.added,
                 "apkName": PurePath(apk.filename).name,
@@ -1221,6 +1220,19 @@ def load_timestamps(parent_dir: Path) -> Dict[str, int]:
 def save_timestamps(parent_dir: Path, timestamps: Dict[str, int]) -> None:
     """Save timestamps.json."""
     save_json(parent_dir / "timestamps.json", timestamps, pretty=True)
+
+
+def load_errors(parent_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
+    """Load errors.json."""
+    try:
+        return load_json(parent_dir / "errors.json")
+    except FileNotFoundError:
+        return {}
+
+
+def save_errors(parent_dir: Path, errors: Dict[str, List[Dict[str, Any]]]) -> None:
+    """Save errors.json."""
+    save_json(parent_dir / "errors.json", errors, pretty=True)
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -1457,8 +1469,8 @@ _hooks = {
 
 
 # FIXME
-# FIXME: --continue-on-errors, --pretty, --no-sign
-def do_update(tc: ToolConfig, verbose: int = 0) -> None:
+# FIXME: --pretty, --no-sign
+def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False) -> None:
     """Update index."""
     if not tc.cfg:
         raise Error("No config.yml")
@@ -1469,12 +1481,15 @@ def do_update(tc: ToolConfig, verbose: int = 0) -> None:
     one_signer_only: Dict[str, bool] = {}
     times: Dict[str, Set[int]] = {}
     timestamps = load_timestamps(tc.cur_dir)
+    errors = load_errors(tc.cur_dir)
     if verbose > 1:
         print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
-    process_apks(tc, apks=apks, times=times, timestamps=timestamps, verbose=verbose)
-    process_recipes(tc, apks=apks, apps=apps, meta=meta, aask=aask,
-                    one_signer_only=one_signer_only, verbose=verbose)
-    check_aask(apks=apks, aask=aask, one_signer_only=one_signer_only)
+    process_apks(tc, apks=apks, times=times, timestamps=timestamps, errors=errors,
+                 verbose=verbose, continue_on_errors=continue_on_errors)
+    process_recipes(tc, apks=apks, apps=apps, meta=meta, aask=aask, one_signer_only=one_signer_only,
+                    verbose=verbose, continue_on_errors=continue_on_errors)
+    check_aask(tc, apks=apks, aask=aask, one_signer_only=one_signer_only,
+               errors=errors, continue_on_errors=continue_on_errors)
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
     make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=apps, apks=apks,
@@ -1482,40 +1497,49 @@ def do_update(tc: ToolConfig, verbose: int = 0) -> None:
                updated=updated, ts=tc.timestamp, verbose=verbose)
     sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
+    save_errors(tc.cur_dir, errors)
 
 
-# FIXME: --continue-on-errors
 def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict[str, Set[int]],
-                 timestamps: Dict[str, int], verbose: int = 0) -> None:
+                 timestamps: Dict[str, int], errors: Dict[str, List[Dict[str, Any]]],
+                 verbose: int = 0, continue_on_errors: bool = False) -> None:
     """
     Process APKs (tc.apk_paths).
+
+    If continue_on_errors=True, prints warnings and appends errors to the log
+    instead of raising errors.
 
     NB: modifies data!
     """
     for apkfile in tc.apk_paths():
         if verbose:
             print(f"Processing {str(apkfile)!r}...")
-        if apkfile.name not in timestamps:
-            timestamps[apkfile.name] = tc.timestamp
-        apk = get_apk_info(apkfile, timestamps[apkfile.name], java_stuff=tc.java_stuff)
-        man = apk.manifest
-        if verbose:
-            print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
-        if man.appid not in tc.appids:
-            raise Error(f"APK without recipe: {str(apkfile)!r} ({man.appid!r})")
-        if man.appid not in apks:
-            apks[man.appid] = {}
-        if man.version_code in apks[man.appid]:
-            raise Error(f"Duplicate version code: {man.appid!r}:{man.version_code}")
-        apks[man.appid][man.version_code] = apk
-        if man.appid not in times:
-            times[man.appid] = set()
-        times[man.appid].add(timestamps[apkfile.name])
+        ts = timestamps.get(apkfile.name, tc.timestamp)
+        try:
+            apk = get_apk_info(apkfile, ts, java_stuff=tc.java_stuff)
+            man = apk.manifest
+            if verbose:
+                print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
+            if man.appid not in tc.appids:
+                raise Error(f"APK without recipe: {str(apkfile)!r} ({man.appid!r})")
+            apks.setdefault(man.appid, {})
+            if man.version_code in apks[man.appid]:
+                raise Error(f"Duplicate version code: {man.appid!r}:{man.version_code}")
+        except (Error, binres.Error) as e:
+            if not continue_on_errors:
+                raise
+            print(f"Warning: {e}.", file=sys.stderr)
+            errors.setdefault(apkfile.name, []).append(dict(timestamp=tc.timestamp, error=str(e)))
+        else:
+            apks[man.appid][man.version_code] = apk
+            timestamps.setdefault(apkfile.name, ts)
+            times.setdefault(man.appid, set()).add(ts)
 
 
 def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: List[App],
                     meta: Dict[str, Dict[str, Metadata]], aask: Dict[str, List[str]],
-                    one_signer_only: Dict[str, bool], verbose: int = 0) -> None:
+                    one_signer_only: Dict[str, bool], verbose: int = 0,
+                    continue_on_errors: bool = False) -> None:
     """
     Process recipes (tc.recipe_paths).
 
@@ -1525,7 +1549,10 @@ def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Li
         if verbose:
             print(f"Processing {str(recipe)!r}...")
         if (appid := recipe.stem) not in apks:
-            raise Error(f"recipe without APKs: {appid!r}")
+            error = f"Recipe without APKs: {appid!r}"
+            if not continue_on_errors:
+                raise Error(error)
+            print(f"Warning: {error}.", file=sys.stderr)
         version_codes = sorted(apks[appid].keys())
         app = parse_recipe_yaml(recipe, version_codes[-1])
         app_dir = recipe.with_suffix("")
@@ -1537,27 +1564,39 @@ def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Li
             raise Error(f"No allowed signing keys specified for {appid!r} "
                         "(use 'any' to allow any signing key)")
         if app.allowed_apk_signing_keys == ["any"]:
-            print(f"Warning: any signing key allowed for {appid!r}.", file=sys.stderr)
+            print(f"Warning: Any signing key allowed for {appid!r}.", file=sys.stderr)
         aask[appid] = app.allowed_apk_signing_keys
         one_signer_only[appid] = app.one_signer_only
         apps.append(app)
 
 
 # FIXME: disallow v1 only (w/ setting and per-apt opt-out)
-# FIXME: --continue-on-errors
-def check_aask(*, apks: Dict[str, Dict[int, Apk]], aask: Dict[str, List[str]],
-               one_signer_only: Dict[str, bool]) -> None:
-    """Check allowed_apk_signing_keys."""
+def check_aask(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], aask: Dict[str, List[str]],
+               one_signer_only: Dict[str, bool], errors: Dict[str, List[Dict[str, Any]]],
+               continue_on_errors: bool = False) -> None:
+    """
+    Check allowed_apk_signing_keys.
+
+    NB: modifies data!
+    """
     for appid, versions in apks.items():
         for apk in versions.values():
             filename, signers = apk.filename, aask[appid]
-            if len(apk.signing_keys) > 1:
-                if one_signer_only[appid]:
-                    raise Error(f"Multiple signers for {filename!r}: {apk.signing_keys}")
-                print(f"Warning: multiple signers for {filename!r}: {apk.signing_keys}.", file=sys.stderr)
-            missing = [k for k in apk.signing_keys if k not in signers]
-            if missing and signers != ["any"]:
-                raise Error(f"Unallowed signer(s) for {filename!r}: {missing}")
+            try:
+                if len(apk.signing_keys) > 1:
+                    error = f"Multiple signers for {filename!r}: {apk.signing_keys}"
+                    if one_signer_only[appid]:
+                        raise Error(error)
+                    print(f"Warning: {error}.", file=sys.stderr)
+                missing = [k for k in apk.signing_keys if k not in signers]
+                if missing and signers != ["any"]:
+                    raise Error(f"Unallowed signer(s) for {filename!r}: {missing}")
+            except (Error, binres.Error) as e:
+                if not continue_on_errors:
+                    raise
+                print(f"Warning: {e}.", file=sys.stderr)
+                errors.setdefault(PurePath(filename).name, []).append(
+                    dict(timestamp=tc.timestamp, error=str(e)))
 
 
 # FIXME
@@ -1584,6 +1623,8 @@ def main() -> None:
         generate/update index
     """)
     @click.option("-v", "--verbose", count=True, help="Increase verbosity.")
+    @click.option("--continue-on-errors", is_flag=True,
+                  help="Skip APKs with errors and append to errors.json.")
     def update(*args: Any, **kwargs: Any) -> None:
         do_update(tc, *args, **kwargs)
 
