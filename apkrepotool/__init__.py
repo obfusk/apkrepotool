@@ -1491,7 +1491,7 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     one_signer_only: Dict[str, bool] = {}
     times: Dict[str, Set[int]] = {}
     timestamps = load_timestamps(tc.cur_dir)
-    errors = load_errors(tc.cur_dir)
+    errors = load_errors(tc.cur_dir) if continue_on_errors else {}
     if verbose > 1:
         print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
     process_apks(tc, apks=apks, times=times, timestamps=timestamps, errors=errors,
@@ -1507,7 +1507,8 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
                updated=updated, ts=tc.timestamp, verbose=verbose)
     sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
-    save_errors(tc.cur_dir, errors)
+    if continue_on_errors:
+        save_errors(tc.cur_dir, errors)
 
 
 def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict[str, Set[int]],
