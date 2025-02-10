@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import functools
 import hashlib
 import importlib.resources
@@ -98,6 +99,8 @@ public class Cert {
 }
 """[1:]
 CERT_JAVA_SHA256 = hashlib.sha256(CERT_JAVA_CODE.encode()).hexdigest()
+
+_have_extended_manifest = any(f.name == "app_label" for f in dataclasses.fields(binres.ManifestInfo))
 
 
 class Error(Exception):
@@ -194,6 +197,8 @@ class Manifest:
     features: List[Feature]
     permissions: List[Permission]
     abis: List[str]
+    label: Optional[str]
+    png_icons: Optional[List[str]]
 
 
 @dataclass(frozen=True)
@@ -324,7 +329,6 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
     r"""
     Parse recipe YAML.
 
-    >>> import dataclasses
     >>> app = parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
     >>> for field in dataclasses.fields(app):
     ...     print(f"{field.name}={getattr(app, field.name)!r}")
@@ -427,7 +431,6 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
     r"""
     Parse config YAML.
 
-    >>> import dataclasses
     >>> cfg = parse_config_yaml(Path("test/config.yml"))
     >>> for field in dataclasses.fields(cfg):
     ...     print(f"{field.name}={getattr(cfg, field.name)!r}")
@@ -550,7 +553,6 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
     r"""
     Parse (fastlane) metadata (from app_dir) and images (from repo_dir).
 
-    >>> import dataclasses
     >>> app_dir = Path("test/metadata/android.appsecurity.cts.tinyapp")
     >>> meta = parse_app_metadata(app_dir, Path("test/repo"), [10])
     >>> sorted(meta.keys())
@@ -615,7 +617,6 @@ def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuf
     r"""
     Get APK info.
 
-    >>> import dataclasses
     >>> apk = get_apk_info(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
     >>> for field in dataclasses.fields(apk):
     ...     if field.name != "manifest":
@@ -642,7 +643,6 @@ def get_manifest(apkfile: Path) -> Manifest:
     r"""
     Parse AndroidManifest.xml.
 
-    >>> import dataclasses
     >>> manifest = get_manifest(Path("test/repo/golden-aligned-v1v2v3-out.apk"))
     >>> for field in dataclasses.fields(manifest):
     ...     print(f"{field.name}={getattr(manifest, field.name)!r}")
@@ -654,9 +654,18 @@ def get_manifest(apkfile: Path) -> Manifest:
     features=[]
     permissions=[]
     abis=['armeabi']
+    label='Tiny App for CTS'
+    png_icons=None
 
     """
-    m = binres.get_manifest_info_apk(str(apkfile))
+    if _have_extended_manifest:
+        m = binres.get_manifest_info_apk(str(apkfile), extended=True)
+        label = (m.app_label or {}).get("", [None])[0]
+        png_icons = [v[0] for _, v in sorted((m.app_icon or {}).items(), reverse=True)
+                     if v[0].endswith(".png")] or None
+    else:
+        m = binres.get_manifest_info_apk(str(apkfile))
+        label = png_icons = None
     assert m.abis is not None
     features = [Feature(name=f.name) for f in m.features if f.required]
     permissions = [Permission(name=p.name, min_sdk_version=p.min_sdk_version,
@@ -664,7 +673,8 @@ def get_manifest(apkfile: Path) -> Manifest:
     return Manifest(appid=m.appid, version_code=m.version_code, version_name=m.version_name,
                     min_sdk=m.min_sdk, target_sdk=m.target_sdk,
                     features=sorted(features, key=lambda f: f.name),
-                    permissions=sorted(permissions, key=lambda p: p.name), abis=m.abis)
+                    permissions=sorted(permissions, key=lambda p: p.name),
+                    abis=m.abis, label=label, png_icons=png_icons)
 
 
 def get_sha256(file: Path) -> str:
