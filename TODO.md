@@ -46,7 +46,7 @@
 ## nice to have (#5)
 
 * [x] get app name from APK
-* [ ] get (XML) icons from APK
+* [x] get (XML) icons from APK
 * [ ] `apkcache.json` -> `timestamps.json` script
 * [ ] "API" ?!
 

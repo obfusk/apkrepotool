@@ -1474,6 +1474,7 @@ def load_hook(hook: Hook, tc: ToolConfig) -> types.ModuleType:
 _loaded_hooks: Dict[str, Hook] = {}
 _hooks = {
     h.name: h for h in [
+        Hook("extract-icons", info="extract PNG icons from APKs", builtin=True),
         Hook("link", info="print repo link", builtin=True),
         Hook("lint", info="lint recipes", builtin=True),
     ]

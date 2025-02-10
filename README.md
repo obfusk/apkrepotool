@@ -117,9 +117,10 @@ Options:
   --help     Show this message and exit.
 
 Commands:
-  link    print repo link
-  lint    lint recipes
-  update  generate/update index
+  extract-icons  extract PNG icons from APKs
+  link           print repo link
+  lint           lint recipes
+  update         generate/update index
 $ apkrepotool link --help
 [...]
 $ apkrepotool update --help

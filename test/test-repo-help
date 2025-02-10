@@ -7,9 +7,10 @@ Options:
   --help     Show this message and exit.
 
 Commands:
-  example  example hook
-  link     print repo link
-  lint     lint recipes
-  test     alias for lint, update -v, link, example
-  u        alias for update
-  update   generate/update index
+  example        example hook
+  extract-icons  extract PNG icons from APKs
+  link           print repo link
+  lint           lint recipes
+  test           alias for lint, update -v, link, example
+  u              alias for update
+  update         generate/update index
