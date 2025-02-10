@@ -18,7 +18,7 @@ def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
     for recipe in tc.recipe_paths:
         if opts.verbose:
             print(f"Processing {str(recipe)!r}...")
-        apkrepotool.parse_recipe_yaml(recipe, -1)   # parse & validate only
+        apkrepotool.parse_recipe_yaml(recipe, -1, apk_label="...")  # parse & validate
 
 
 # vim: set tw=80 sw=4 sts=4 et fdm=marker :

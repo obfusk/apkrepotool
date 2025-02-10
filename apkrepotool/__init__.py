@@ -325,7 +325,7 @@ class Hook:
 
 # FIXME
 def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
-                      validate: bool = True) -> App:
+                      apk_label: Optional[str] = None, validate: bool = True) -> App:
     r"""
     Parse recipe YAML.
 
@@ -372,10 +372,12 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
                 anti_features = data["AntiFeatures"]
         if "Name" in data:
             name = data["Name"]
+        elif apk_label:
+            name = apk_label
         elif "AutoName" in data:
             name = data["AutoName"]
         else:
-            raise NotImplementedError("FIXME: cannot get name from APK yet")
+            raise Error(f"Could not determine app name for {appid!r}")
         return App(
             appid=appid, name=name,
             current_version_code=data.get("CurrentVersionCode", latest_version_code),
@@ -1564,8 +1566,11 @@ def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Li
             if not continue_on_errors:
                 raise Error(error)
             print(f"Warning: {error}.", file=sys.stderr)
+            continue
         version_codes = sorted(apks[appid].keys())
-        app = parse_recipe_yaml(recipe, version_codes[-1])
+        apk_label = max([(code, apk.manifest.label) for code, apk in apks[appid].items()
+                         if apk.manifest.label], default=(-1, None))[1]
+        app = parse_recipe_yaml(recipe, version_codes[-1], apk_label=apk_label)
         app_dir = recipe.with_suffix("")
         if app_dir.exists():
             meta[appid] = parse_app_metadata(app_dir, tc.repo_dir, version_codes)
