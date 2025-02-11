@@ -870,7 +870,7 @@ def _vsn(v: str) -> Tuple[int, ...]:
 
 # FIXME
 # FIXME: --pretty?
-def make_index(*, repo_dir: Path, cache_dir: Path, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
+def make_index(*, repo_dir: Path, cache_dir: Path, apps: List[App], apks: Dict[str, Dict[int, Apk]],
                meta: Dict[str, Dict[str, Metadata]], cfg: Config,
                localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
                updated: Dict[str, int], ts: int, pretty: bool = False, verbose: int = 0) -> None:
@@ -931,7 +931,7 @@ def index_diff(source: Any, target: Any) -> Any:
 
 # FIXME
 # FIXME: use localised config if it exists; ensure identical if both do
-def v1_index(*, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
+def v1_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
              meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
              added: Dict[str, int], updated: Dict[str, int]) -> Dict[str, Any]:
     """Create v1 index data."""
@@ -951,12 +951,12 @@ def v1_index(*, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
 
 
 # FIXME
-def v1_apps(apps: Dict[str, App], meta: Dict[str, Dict[str, Metadata]],
+def v1_apps(apps: List[App], meta: Dict[str, Dict[str, Metadata]],
             added: Dict[str, int], updated: Dict[str, int]) -> List[Dict[str, Any]]:
     """Create v1 index apps data."""
     data = []
     # index is historically sorted by name
-    for app in sorted(apps.values(), key=lambda app: app.name.upper()):
+    for app in sorted(apps, key=lambda app: app.name.upper()):
         aask = app.allowed_apk_signing_keys if app.allowed_apk_signing_keys != ["any"] else None
         entry = {
             "allowedAPKSigningKeys": aask,
@@ -1046,7 +1046,7 @@ def v1_packages(apks: Dict[str, Dict[int, Apk]]) -> Dict[str, List[Any]]:
 # FIXME: categories
 # FIXME: mirrors etc.
 # FIXME: ensure localised config and regular one are identical if both exist
-def v2_index(*, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
+def v2_index(*, apps: List[App], apks: Dict[str, Dict[int, Apk]],
              meta: Dict[str, Dict[str, Metadata]], ts: int, cfg: Config,
              localised_cfgs: Dict[str, LocalisedConfig], added: Dict[str, int],
              updated: Dict[str, int], icon: FileInfo) -> Dict[str, Any]:
@@ -1055,7 +1055,7 @@ def v2_index(*, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
         localised_cfgs = localised_cfgs.copy()
         localised_cfgs[DEFAULT_LOCALE] = LocalisedConfig(
             repo_name=cfg.repo_name, repo_description=cfg.repo_description)
-    categories = sorted(set().union(*(set(app.categories) for app in apps.values())))
+    categories = sorted(set().union(*(set(app.categories) for app in apps)))
     return {
         "repo": {
             "name": {k: v.repo_name for k, v in localised_cfgs.items()},
@@ -1076,12 +1076,12 @@ def v2_index(*, apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
 
 
 # FIXME
-def v2_packages(apps: Dict[str, App], apks: Dict[str, Dict[int, Apk]],
+def v2_packages(apps: List[App], apks: Dict[str, Dict[int, Apk]],
                 meta: Dict[str, Dict[str, Metadata]], added: Dict[str, int],
                 updated: Dict[str, int]) -> Dict[str, Any]:
     """Create v2 index packages data."""
     data = {}
-    for app in apps.values():
+    for app in apps:
         loc = meta[app.appid]
         mv = max(apks[app.appid].keys())
         signer = apks[app.appid][mv].signing_keys[0]    # FIXME: sort by ...
@@ -1499,9 +1499,9 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     process_meta(tc, apks=apks, apps=apps, meta=meta, verbose=verbose, continue_on_errors=continue_on_errors)
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
-    make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=apps, apks=apks,
-               meta=meta, cfg=tc.cfg, localised_cfgs=tc.localised_cfgs, added=added,
-               updated=updated, ts=tc.timestamp, verbose=verbose)
+    make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=list(apps.values()),
+               apks=apks, meta=meta, cfg=tc.cfg, localised_cfgs=tc.localised_cfgs,
+               added=added, updated=updated, ts=tc.timestamp, verbose=verbose)
     sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
     if continue_on_errors:
