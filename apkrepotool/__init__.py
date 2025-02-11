@@ -1619,7 +1619,7 @@ def main() -> None:
         tc = tool_config()
     except Error as e:
         print(f"Error: {e}.", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(4)
 
     @click.group(help="""
         apkrepotool - manage APK repos
@@ -1672,7 +1672,7 @@ def main() -> None:
         cli(prog_name=NAME)
     except (Error, binres.Error) as e:
         print(f"Error: {e}.", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(3)
 
 
 if __name__ == "__main__":
