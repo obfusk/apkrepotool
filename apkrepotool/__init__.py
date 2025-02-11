@@ -1560,6 +1560,7 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
             if missing and aask != ["any"]:
                 raise Error(f"Unallowed signer(s) for {apk.filename!r}: {missing}")
         except (Error, binres.Error) as e:
+            # NB: APK has not been added yet, so nothing to remove
             errors.setdefault(apkfile.name, []).append(dict(timestamp=tc.timestamp, error=str(e)))
             if not continue_on_errors:
                 raise
@@ -1586,17 +1587,17 @@ def process_meta(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]],
         try:
             if not apks.get(appid, {}):
                 raise Error(f"Recipe without APKs: {appid!r}")
-            if not (name := apps[appid].name):
-                name = max([(code, apk.manifest.label) for code, apk in apks[appid].items()
-                            if apk.manifest.label], default=(-1, ""))[1]
-                if not name:
-                    raise Error(f"Could not determine app name for {appid!r}")
         except (Error, binres.Error) as e:
-            del apps[appid]     # REMOVE !!!
+            del apps[appid]     # NB: remove app !!!
             if not continue_on_errors:
                 raise
             print(f"Warning: {e}.", file=sys.stderr)
         else:
+            if not (name := apps[appid].name):
+                name = max([(code, apk.manifest.label) for code, apk in apks[appid].items()
+                            if apk.manifest.label], default=(-1, ""))[1]
+                if not name:
+                    raise Error(f"Could not extract app name, please set Name in {str(recipe)!r}")
             version_codes = sorted(apks[appid].keys())
             if (cvc := apps[appid].current_version_code) == -1:
                 cvc = version_codes[-1]
