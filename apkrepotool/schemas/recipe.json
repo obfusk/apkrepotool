@@ -17,7 +17,9 @@
           "items": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
-          }
+          },
+          "uniqueItems": true,
+          "minItems": 1
         }
       ]
     },
@@ -27,10 +29,10 @@
         {
           "type": "array",
           "items": {
-            "type": "string",
-            "uniqueItems": true,
-            "minItems": 1
-          }
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "minItems": 1
         },
         {
           "type": "object",
@@ -143,6 +145,7 @@
     }
   },
   "required": [
+    "AllowedAPKSigningKeys",
     "Categories"
   ],
   "additionalProperties": false

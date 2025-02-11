@@ -324,12 +324,14 @@ class Hook:
 
 
 # FIXME
-def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
-                      apk_label: Optional[str] = None, validate: bool = True) -> App:
+def parse_recipe_yaml(recipe_file: Path, *, validate: bool = True) -> App:
     r"""
     Parse recipe YAML.
 
-    >>> app = parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"), 10)
+    NB: name defaults to an empty string and current_version_code to -1, to be
+    validated after processing APKs.
+
+    >>> app = parse_recipe_yaml(Path("test/metadata/android.appsecurity.cts.tinyapp.yml"))
     >>> for field in dataclasses.fields(app):
     ...     print(f"{field.name}={getattr(app, field.name)!r}")
     appid='android.appsecurity.cts.tinyapp'
@@ -358,13 +360,11 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
         data = yaml.load(fh)
         if validate:
             validate_recipe_yaml(data, recipe_file)
-        aask = []
         anti_features: Dict[str, Dict[str, str]] = {}
-        if "AllowedAPKSigningKeys" in data:
-            if isinstance(data["AllowedAPKSigningKeys"], str):
-                aask = [data["AllowedAPKSigningKeys"]]
-            else:
-                aask = data["AllowedAPKSigningKeys"]
+        if isinstance(data["AllowedAPKSigningKeys"], str):
+            aask = [data["AllowedAPKSigningKeys"]]
+        else:
+            aask = data["AllowedAPKSigningKeys"]
         if "AntiFeatures" in data:
             if isinstance(data["AntiFeatures"], list):
                 anti_features = {k: {} for k in data["AntiFeatures"]}
@@ -372,15 +372,13 @@ def parse_recipe_yaml(recipe_file: Path, latest_version_code: int, *,
                 anti_features = data["AntiFeatures"]
         if "Name" in data:
             name = data["Name"]
-        elif apk_label:
-            name = apk_label
         elif "AutoName" in data:
             name = data["AutoName"]
         else:
-            raise Error(f"Could not determine app name for {appid!r}")
+            name = ""
         return App(
             appid=appid, name=name,
-            current_version_code=data.get("CurrentVersionCode", latest_version_code),
+            current_version_code=data.get("CurrentVersionCode", -1),
             current_version_name=data.get("CurrentVersion"),
             allowed_apk_signing_keys=aask, anti_features=anti_features,
             categories=data.get("Categories", []), one_signer_only=data.get("OneSignerOnly", True),
@@ -401,9 +399,9 @@ def validate_recipe_yaml(data: Dict[str, Any], path: Path) -> None:
     ...     e.path
     ...     e.error.message
     'appid.yml'
-    "'Categories' is a required property"
+    "'AllowedAPKSigningKeys' is a required property"
     >>> try:
-    ...     validate_recipe_yaml({"Categories": ["a", "a"]}, PurePath("appid.yml"))
+    ...     validate_recipe_yaml({"AllowedAPKSigningKeys": "all", "Categories": ["a", "a"]}, PurePath("appid.yml"))
     ... except ValidationError as e:
     ...     e.path
     ...     e.error.message
@@ -1490,19 +1488,15 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     apks: Dict[str, Dict[int, Apk]] = {}
     apps: Dict[str, App] = {}
     meta: Dict[str, Dict[str, Metadata]] = {}
-    aask: Dict[str, List[str]] = {}
-    one_signer_only: Dict[str, bool] = {}
     times: Dict[str, Set[int]] = {}
     timestamps = load_timestamps(tc.cur_dir)
     errors = load_errors(tc.cur_dir) if continue_on_errors else {}
     if verbose > 1:
         print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
-    process_apks(tc, apks=apks, times=times, timestamps=timestamps, errors=errors,
+    process_recipes(tc, apps=apps, verbose=verbose)
+    process_apks(tc, apks=apks, apps=apps, times=times, timestamps=timestamps, errors=errors,
                  verbose=verbose, continue_on_errors=continue_on_errors)
-    process_recipes(tc, apks=apks, apps=apps, meta=meta, aask=aask, one_signer_only=one_signer_only,
-                    verbose=verbose, continue_on_errors=continue_on_errors)
-    check_aask(tc, apks=apks, apps=apps, meta=meta, aask=aask, one_signer_only=one_signer_only,
-               errors=errors, continue_on_errors=continue_on_errors)
+    process_meta(tc, apks=apks, apps=apps, meta=meta, verbose=verbose, continue_on_errors=continue_on_errors)
     added = {k: min(v) for k, v in times.items()}
     updated = {k: max(v) for k, v in times.items()}
     make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=apps, apks=apks,
@@ -1514,9 +1508,26 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
         save_errors(tc.cur_dir, errors)
 
 
-def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict[str, Set[int]],
-                 timestamps: Dict[str, int], errors: Dict[str, List[Dict[str, Any]]],
-                 verbose: int = 0, continue_on_errors: bool = False) -> None:
+def process_recipes(tc: ToolConfig, *, apps: Dict[str, App], verbose: int = 0) -> None:
+    """
+    Process recipes (tc.recipe_paths).
+
+    NB: modifies data!
+    """
+    for recipe in tc.recipe_paths:
+        if verbose:
+            print(f"Processing {str(recipe)!r}...")
+        app = parse_recipe_yaml(recipe)
+        if app.allowed_apk_signing_keys == ["any"]:
+            print(f"Warning: Any signing key allowed for {app.appid!r}.", file=sys.stderr)
+        apps[app.appid] = app
+
+
+# FIXME: disallow v1 only (w/ setting and per-apt opt-out)
+def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[str, App],
+                 times: Dict[str, Set[int]], timestamps: Dict[str, int],
+                 errors: Dict[str, List[Dict[str, Any]]], verbose: int = 0,
+                 continue_on_errors: bool = False) -> None:
     """
     Process APKs (tc.apk_paths).
 
@@ -1539,91 +1550,61 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], times: Dict
             apks.setdefault(man.appid, {})
             if man.version_code in apks[man.appid]:
                 raise Error(f"Duplicate version code: {man.appid!r}:{man.version_code}")
+            if len(apk.signing_keys) > 1:
+                error = f"Multiple signers for {apk.filename!r}: {apk.signing_keys}"
+                if apps[man.appid].one_signer_only:
+                    raise Error(error)
+                print(f"Warning: {error}.", file=sys.stderr)
+            aask = apps[man.appid].allowed_apk_signing_keys
+            missing = [k for k in apk.signing_keys if k not in aask]
+            if missing and aask != ["any"]:
+                raise Error(f"Unallowed signer(s) for {apk.filename!r}: {missing}")
         except (Error, binres.Error) as e:
+            errors.setdefault(apkfile.name, []).append(dict(timestamp=tc.timestamp, error=str(e)))
             if not continue_on_errors:
                 raise
             print(f"Warning: {e}.", file=sys.stderr)
-            errors.setdefault(apkfile.name, []).append(dict(timestamp=tc.timestamp, error=str(e)))
         else:
             apks[man.appid][man.version_code] = apk
             timestamps.setdefault(apkfile.name, ts)
             times.setdefault(man.appid, set()).add(ts)
 
 
-def process_recipes(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[str, App],
-                    meta: Dict[str, Dict[str, Metadata]], aask: Dict[str, List[str]],
-                    one_signer_only: Dict[str, bool], verbose: int = 0,
-                    continue_on_errors: bool = False) -> None:
+# FIXME: log missing app name?!
+def process_meta(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]],
+                 apps: Dict[str, App], meta: Dict[str, Dict[str, Metadata]],
+                 verbose: int = 0, continue_on_errors: bool = False) -> None:
     """
-    Process recipes (tc.recipe_paths).
+    Process apps & metadata.
 
     NB: modifies data!
     """
     for recipe in tc.recipe_paths:
+        appid = recipe.stem
         if verbose:
-            print(f"Processing {str(recipe)!r}...")
-        if (appid := recipe.stem) not in apks:
-            error = f"Recipe without APKs: {appid!r}"
+            print(f"Processing metadata for {appid!r}...")
+        try:
+            if not apks.get(appid, {}):
+                raise Error(f"Recipe without APKs: {appid!r}")
+            if not (name := apps[appid].name):
+                name = max([(code, apk.manifest.label) for code, apk in apks[appid].items()
+                            if apk.manifest.label], default=(-1, ""))[1]
+                if not name:
+                    raise Error(f"Could not determine app name for {appid!r}")
+        except (Error, binres.Error) as e:
+            del apps[appid]     # REMOVE !!!
             if not continue_on_errors:
-                raise Error(error)
-            print(f"Warning: {error}.", file=sys.stderr)
-            continue
-        version_codes = sorted(apks[appid].keys())
-        apk_label = max([(code, apk.manifest.label) for code, apk in apks[appid].items()
-                         if apk.manifest.label], default=(-1, None))[1]
-        app = parse_recipe_yaml(recipe, version_codes[-1], apk_label=apk_label)
-        app_dir = recipe.with_suffix("")
-        if app_dir.exists():
-            meta[appid] = parse_app_metadata(app_dir, tc.repo_dir, version_codes)
-            if verbose > 1:
-                print(f"  Metadata locales: {list(meta[appid].keys())}.")
-        if not app.allowed_apk_signing_keys:
-            raise Error(f"No allowed signing keys specified for {appid!r} "
-                        "(use 'any' to allow any signing key)")
-        if app.allowed_apk_signing_keys == ["any"]:
-            print(f"Warning: Any signing key allowed for {appid!r}.", file=sys.stderr)
-        aask[appid] = app.allowed_apk_signing_keys
-        one_signer_only[appid] = app.one_signer_only
-        apps[appid] = app
-
-
-# FIXME: cleanup timestamps, times
-# FIXME: disallow v1 only (w/ setting and per-apt opt-out)
-def check_aask(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[str, App],
-               meta: Dict[str, Dict[str, Metadata]], aask: Dict[str, List[str]],
-               one_signer_only: Dict[str, bool], errors: Dict[str, List[Dict[str, Any]]],
-               continue_on_errors: bool = False) -> None:
-    """
-    Check allowed_apk_signing_keys.
-
-    NB: modifies data!
-    """
-    remove = []
-    for appid, versions in apks.items():
-        for apk in versions.values():
-            filename, signers = apk.filename, aask[appid]
-            try:
-                if len(apk.signing_keys) > 1:
-                    error = f"Multiple signers for {filename!r}: {apk.signing_keys}"
-                    if one_signer_only[appid]:
-                        raise Error(error)
-                    print(f"Warning: {error}.", file=sys.stderr)
-                missing = [k for k in apk.signing_keys if k not in signers]
-                if missing and signers != ["any"]:
-                    raise Error(f"Unallowed signer(s) for {filename!r}: {missing}")
-            except (Error, binres.Error) as e:
-                if not continue_on_errors:
-                    raise
-                remove.append(apk)
-                print(f"Warning: {e}.", file=sys.stderr)
-                errors.setdefault(PurePath(filename).name, []).append(
-                    dict(timestamp=tc.timestamp, error=str(e)))
-    for apk in remove:
-        del apks[apk.manifest.appid][apk.manifest.version_code]
-    for appid in set(apk.manifest.appid for apk in remove):
-        if not apks[appid]:
-            print(f"Warning: Removing recipe without valid APKs: {appid!r}.", file=sys.stderr)
-            del apks[appid], apps[appid], meta[appid], aask[appid], one_signer_only[appid]
+                raise
+            print(f"Warning: {e}.", file=sys.stderr)
+        else:
+            version_codes = sorted(apks[appid].keys())
+            if (cvc := apps[appid].current_version_code) == -1:
+                cvc = version_codes[-1]
+            apps[appid] = dataclasses.replace(apps[appid], name=name, current_version_code=cvc)
+            if (app_dir := recipe.with_suffix("")).exists():
+                meta[appid] = parse_app_metadata(app_dir, tc.repo_dir, version_codes)
+                if verbose > 1:
+                    print(f"  Locales: {list(meta[appid].keys())}.")
 
 
 # FIXME
