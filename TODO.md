@@ -28,17 +28,19 @@
 * [x] link subcomand (get url w/ fingerprint) (#8)
 * [x] implement & use `binres.get_manifest_info()` (#18)
 * [x] test coverage (#11)
+* [x] `cache/apks.json` (#7)
 * [ ] run subcommand (hooks for deploy, init, etc.) (#9)
 * [ ] lint subcommand & JSON schemas (#4)
 * [ ] `--continue-on-errors` (skip those APKs) (#6)
-* [ ] `cache/apks.json` (#7)
 * [ ] more YAML: RequiresRoot, Liberapay/OpenCollective/..., MaintainerNotes, ... (#16)
 * [ ] advanced options (e.g. mirrors, custom AFs, localised config, per-APK AFs) (#14)
+* [ ] transparency log (2x) + signature blocklist (#13)
+* [ ] switch CI back to latest repro-apk instead of master (#20)
+* [ ] increase test coverage: error paths (#21)
 
 ## more
 
 * [ ] hooks for checks (#12)
-* [ ] transparency log (2x) + signature blocklist (#13)
 * [ ] QR code (#17)
 * [ ] HSM support (#15)
 * [ ] .deb (#2)
@@ -46,7 +48,9 @@
 ## nice to have (#5)
 
 * [x] get app name from APK
-* [x] get (XML) icons from APK
+* [x] get PNG icons from APK
+* [ ] get webp icons from APK
+* [ ] get XML icons from APK
 * [ ] `apkcache.json` -> `timestamps.json` script
 * [ ] "API" ?!
 
