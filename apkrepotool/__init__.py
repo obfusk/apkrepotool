@@ -199,6 +199,8 @@ class Manifest:
     abis: List[str]
     label: Optional[str]
     png_icons: Optional[List[str]]
+    webp_icons: Optional[List[str]]
+    xml_icons: Optional[List[str]]
 
     @classmethod
     def from_dict(_cls, d: Dict[str, Any]) -> Manifest:
@@ -698,6 +700,8 @@ def get_manifest(apkfile: Path) -> Manifest:
     abis=['armeabi']
     label='Tiny App for CTS'
     png_icons=None
+    webp_icons=None
+    xml_icons=None
 
     >>> manifest = get_manifest(Path("test/test-repo/repo/catima-v2.29.0.apk"))
     >>> for field in dataclasses.fields(manifest):
@@ -712,16 +716,24 @@ def get_manifest(apkfile: Path) -> Manifest:
     abis=[]
     label='Catima'
     png_icons=['res/o-.png', 'res/RJ.png', 'res/FS.png', 'res/yn.png', 'res/9w.png']
+    webp_icons=None
+    xml_icons=['res/BW.xml']
 
     """
+    png_icons, webp_icons, xml_icons = [], [], []
     if _have_extended_manifest:
         m = binres.get_manifest_info_apk(str(apkfile), extended=True)
         label = (m.app_label or {}).get("", [None])[0]
-        png_icons = [v[0] for _, v in sorted((m.app_icon or {}).items(), reverse=True)
-                     if v[0].endswith(".png")] or None
+        for _, v in sorted((m.app_icon or {}).items(), reverse=True):
+            if v[0].endswith(".png"):
+                png_icons.append(v[0])
+            elif v[0].endswith(".webp"):
+                webp_icons.append(v[0])
+            elif v[0].endswith(".xml"):
+                xml_icons.append(v[0])
     else:
         m = binres.get_manifest_info_apk(str(apkfile))
-        label = png_icons = None
+        label = None
     assert m.abis is not None
     features = [Feature(name=f.name) for f in m.features if f.required]
     permissions = [Permission(name=p.name, min_sdk_version=p.min_sdk_version,
@@ -729,8 +741,9 @@ def get_manifest(apkfile: Path) -> Manifest:
     return Manifest(appid=m.appid, version_code=m.version_code, version_name=m.version_name,
                     min_sdk=m.min_sdk, target_sdk=m.target_sdk,
                     features=sorted(features, key=lambda f: f.name),
-                    permissions=sorted(permissions, key=lambda p: p.name),
-                    abis=m.abis, label=label, png_icons=png_icons)
+                    permissions=sorted(permissions, key=lambda p: p.name), abis=m.abis,
+                    label=label, png_icons=png_icons or None, webp_icons=webp_icons or None,
+                    xml_icons=xml_icons or None)
 
 
 def get_sha256(file: Path) -> str:
