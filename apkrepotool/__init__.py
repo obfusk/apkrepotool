@@ -1481,7 +1481,7 @@ _hooks = {
 
 # FIXME
 # FIXME: --pretty, --no-sign
-def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False) -> None:
+def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False) -> bool:
     """Update index."""
     if not tc.cfg:
         raise Error("No config.yml")
@@ -1491,6 +1491,7 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     times: Dict[str, Set[int]] = {}
     timestamps = load_timestamps(tc.cur_dir)
     errors = load_errors(tc.cur_dir) if continue_on_errors else {}
+    num_errors = sum(len(x) for x in errors.values())
     if verbose > 1:
         print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
     process_recipes(tc, apps=apps, verbose=verbose)
@@ -1504,8 +1505,10 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
                added=added, updated=updated, ts=tc.timestamp, verbose=verbose)
     sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
-    if continue_on_errors:
+    if continue_on_errors and sum(len(x) for x in errors.values()) > num_errors:
         save_errors(tc.cur_dir, errors)
+        return False
+    return True
 
 
 def process_recipes(tc: ToolConfig, *, apps: Dict[str, App], verbose: int = 0) -> None:
@@ -1634,8 +1637,14 @@ def main() -> None:
     @click.option("-v", "--verbose", count=True, help="Increase verbosity.")
     @click.option("--continue-on-errors", is_flag=True,
                   help="Skip APKs with errors and append to errors.json.")
-    def update(*args: Any, **kwargs: Any) -> None:
-        do_update(tc, *args, **kwargs)
+    @click.option("--exit-code", is_flag=True, help="Exit with code 5 on skipped errors.")
+    @click.pass_context
+    def update(ctx: click.Context, /, *args: Any, exit_code: bool, **kwargs: Any) -> None:
+        if exit_code and not kwargs["continue_on_errors"]:
+            raise click.exceptions.BadParameter(
+                "Conflicting options: --exit-code without --continue-on-errors.", ctx)
+        if not do_update(tc, *args, **kwargs) and exit_code:
+            sys.exit(5)
 
     def _cli_alias(alias: str, commands: List[str]) -> None:
         cs = dict(ignore_unknown_options=True)
