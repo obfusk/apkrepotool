@@ -219,6 +219,7 @@ class HookConfig:
     name: str
     info: str
     config: Dict[str, Any]
+    builtin: bool
 
 
 # FIXME
@@ -445,7 +446,7 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
     apksigner_jar='/path/to/apksigner.jar'
     java_home='/usr/lib/jvm/java-11-openjdk-amd64'
     aliases={}
-    hooks={}
+    hooks={'extract-icons': HookConfig(name='extract-icons', info='extract PNG icons from APKs', config={}, builtin=True), 'link': HookConfig(name='link', info='print repo link', config={}, builtin=True), 'lint': HookConfig(name='lint', info='lint recipes', config={}, builtin=True)}
 
     """
     with config_file.open(encoding="utf-8") as fh:
@@ -464,9 +465,14 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
                     raise Error(f"Recursive alias: {alias!r}")
         hooks = {}
         for h in data.get("hooks", []):
+            # FIXME: allow overriding builtin hooks?!
             if h["name"] in hooks or h["name"] in _hooks or h["name"] in aliases:
                 raise Error(f"Conflicting hook: {h['name']!r}")
-            hooks[h["name"]] = HookConfig(h["name"], info=h["info"], config=h.get("config", {}))
+            hooks[h["name"]] = HookConfig(h["name"], info=h["info"],
+                                          config=h.get("config", {}), builtin=False)
+        for hook in _hooks.values():
+            # FIXME: use hook config from YAML!
+            hooks[hook.name] = HookConfig(hook.name, info=hook.info, config={}, builtin=True)
         return Config(
             repo_url=data["repo_url"], repo_name=data["repo_name"],
             repo_description=data["repo_description"], repo_keyalias=data["repo_keyalias"],
@@ -1676,7 +1682,8 @@ def main() -> None:
         for alias, commands in tc.cfg.aliases.items():
             _cli_alias(alias, commands)
         for hcfg in tc.cfg.hooks.values():
-            _hooks[hcfg.name] = Hook(hcfg.name, info=hcfg.info, builtin=False)
+            if not hcfg.builtin:
+                _hooks[hcfg.name] = Hook(hcfg.name, info=hcfg.info, builtin=False)
 
     for hook in _hooks.values():
         _cli_hook(hook)
