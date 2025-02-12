@@ -1625,7 +1625,6 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
                 apk = Apk.from_dict(capk)
             else:
                 apk = get_apk_info(apkfile, ts, java_stuff=tc.java_stuff, sha256=sha256)
-                apk_cache[sha256] = apk.to_dict()
             man = apk.manifest
             if verbose:
                 print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
@@ -1653,6 +1652,7 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
             apks[man.appid][man.version_code] = apk
             timestamps.setdefault(apkfile.name, ts)
             times.setdefault(man.appid, set()).add(ts)
+            apk_cache[sha256] = apk.to_dict()
 
 
 # FIXME: log missing app name?!
