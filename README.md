@@ -261,6 +261,9 @@ CurrentVersionCode: 134
 
 ## Hooks & Aliases
 
+> The function of art is to do more than tell it like it is-it’s to imagine what
+> is possible." -bell hooks
+
 Hooks allow adding custom functionality via subcommands.  Aliases allow creating
 short names for one or more subcommands plus options.  See below for an example.
 
