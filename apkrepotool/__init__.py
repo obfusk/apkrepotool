@@ -1481,7 +1481,8 @@ _hooks = {
 
 # FIXME
 # FIXME: --pretty, --no-sign
-def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False) -> bool:
+def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False,
+              write_index: bool = True) -> bool:
     """Update index."""
     if not tc.cfg:
         raise Error("No config.yml")
@@ -1498,12 +1499,13 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     process_apks(tc, apks=apks, apps=apps, times=times, timestamps=timestamps, errors=errors,
                  verbose=verbose, continue_on_errors=continue_on_errors)
     process_meta(tc, apks=apks, apps=apps, meta=meta, verbose=verbose, continue_on_errors=continue_on_errors)
-    added = {k: min(v) for k, v in times.items()}
-    updated = {k: max(v) for k, v in times.items()}
-    make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=list(apps.values()),
-               apks=apks, meta=meta, cfg=tc.cfg, localised_cfgs=tc.localised_cfgs,
-               added=added, updated=updated, ts=tc.timestamp, verbose=verbose)
-    sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
+    if write_index:
+        added = {k: min(v) for k, v in times.items()}
+        updated = {k: max(v) for k, v in times.items()}
+        make_index(repo_dir=tc.repo_dir, cache_dir=tc.cache_dir, apps=list(apps.values()),
+                   apks=apks, meta=meta, cfg=tc.cfg, localised_cfgs=tc.localised_cfgs,
+                   added=added, updated=updated, ts=tc.timestamp, verbose=verbose)
+        sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
     if continue_on_errors and sum(len(x) for x in errors.values()) > num_errors:
         save_errors(tc.cur_dir, errors)
@@ -1638,6 +1640,8 @@ def main() -> None:
     @click.option("--continue-on-errors", is_flag=True,
                   help="Skip APKs with errors and append to errors.json.")
     @click.option("--exit-code", is_flag=True, help="Exit with code 5 on skipped errors.")
+    @click.option("--no-write-index", "write_index", flag_value=False, default=True,
+                  help="Do not write index.")
     @click.pass_context
     def update(ctx: click.Context, /, *args: Any, exit_code: bool, **kwargs: Any) -> None:
         if exit_code and not kwargs["continue_on_errors"]:
