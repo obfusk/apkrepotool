@@ -638,7 +638,8 @@ def parse_app_metadata(app_dir: Path, repo_dir: Path, version_codes: List[int]) 
 
 
 # FIXME
-def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuff] = None) -> Apk:
+def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuff] = None,
+                 sha256: Optional[str] = None) -> Apk:
     r"""
     Get APK info.
 
@@ -670,12 +671,13 @@ def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuf
 
     """
     size = apkfile.stat().st_size
+    if not sha256:
+        sha256 = get_sha256(apkfile)
     certs, _ = get_signing_certs(apkfile, java_stuff=java_stuff)
     fingerprints = [hashlib.sha256(cert).hexdigest() for cert in certs]
     sig = hashlib.md5(binascii.hexlify(certs[0])).hexdigest()
-    return Apk(filename=str(apkfile), size=size, sha256=get_sha256(apkfile),
-               signing_keys=fingerprints, fdroid_sig=sig, added=added,
-               manifest=get_manifest(apkfile))
+    return Apk(filename=str(apkfile), size=size, sha256=sha256, signing_keys=fingerprints,
+               fdroid_sig=sig, added=added, manifest=get_manifest(apkfile))
 
 
 # FIXME
@@ -1294,22 +1296,23 @@ def load_errors(parent_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
         return {}
 
 
-def save_errors(parent_dir: Path, errors: Dict[str, List[Dict[str, Any]]]) -> None:
+def save_errors(parent_dir: Path, errors: Dict[str, List[Dict[str, Any]]], verbose: int = 0) -> None:
     """Save errors.json."""
-    save_json(parent_dir / "errors.json", errors, pretty=True)
+    save_json(parent_dir / "errors.json", errors, pretty=True, verbose=verbose)
 
 
-def load_apk_cache(parent_dir: Path) -> Dict[str, Dict[str, Any]]:
-    """Load apk-cache.json."""
+def load_apks(cache_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """Load apks.json."""
     try:
-        return load_json(parent_dir / "apk-cache.json")
+        return load_json(cache_dir / "apks.json")
     except FileNotFoundError:
         return {}
 
 
-def save_apk_cache(parent_dir: Path, apks: Dict[str, Dict[str, Any]]) -> None:
-    """Save apk-cache.json."""
-    save_json(parent_dir / "apk-cache.json", apks, pretty=True)
+def save_apks(cache_dir: Path, apks: Dict[str, Dict[str, Any]], verbose: int = 0) -> None:
+    """Save apks.json."""
+    save_json(cache_dir / "apks.json", apks, name=f"{cache_dir.name}/apks.json",
+              pretty=True, verbose=verbose)
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -1548,7 +1551,8 @@ _hooks = {
 
 # FIXME
 # FIXME: --pretty, --no-sign
-def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False,
+def do_update(tc: ToolConfig, *, verbose: int = 0, continue_on_errors: bool = False,
+              load_apk_cache: bool = False, save_apk_cache: bool = False,
               write_index: bool = True) -> bool:
     """Update index."""
     if not tc.cfg:
@@ -1558,13 +1562,14 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
     meta: Dict[str, Dict[str, Metadata]] = {}
     times: Dict[str, Set[int]] = {}
     timestamps = load_timestamps(tc.cur_dir)
+    apk_cache = load_apks(tc.cache_dir) if load_apk_cache else {}
     errors = load_errors(tc.cur_dir) if continue_on_errors else {}
     num_errors = sum(len(x) for x in errors.values())
     if verbose > 1:
         print(f"Config locales: {list(tc.localised_cfgs.keys())}.")
     process_recipes(tc, apps=apps, verbose=verbose)
-    process_apks(tc, apks=apks, apps=apps, times=times, timestamps=timestamps, errors=errors,
-                 verbose=verbose, continue_on_errors=continue_on_errors)
+    process_apks(tc, apks=apks, apps=apps, times=times, timestamps=timestamps, apk_cache=apk_cache,
+                 errors=errors, verbose=verbose, continue_on_errors=continue_on_errors)
     process_meta(tc, apks=apks, apps=apps, meta=meta, verbose=verbose, continue_on_errors=continue_on_errors)
     if write_index:
         added = {k: min(v) for k, v in times.items()}
@@ -1574,8 +1579,10 @@ def do_update(tc: ToolConfig, verbose: int = 0, continue_on_errors: bool = False
                    added=added, updated=updated, ts=tc.timestamp, verbose=verbose)
         sign_index(tc.repo_dir, tc.cfg, verbose=verbose, java_stuff=tc.java_stuff)
     save_timestamps(tc.cur_dir, timestamps)
+    if save_apk_cache:
+        save_apks(tc.cache_dir, apk_cache, verbose=verbose)
     if continue_on_errors and sum(len(x) for x in errors.values()) > num_errors:
-        save_errors(tc.cur_dir, errors)
+        save_errors(tc.cur_dir, errors, verbose=verbose)
         return False
     return True
 
@@ -1598,8 +1605,8 @@ def process_recipes(tc: ToolConfig, *, apps: Dict[str, App], verbose: int = 0) -
 # FIXME: disallow v1 only (w/ setting and per-apt opt-out)
 def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[str, App],
                  times: Dict[str, Set[int]], timestamps: Dict[str, int],
-                 errors: Dict[str, List[Dict[str, Any]]], verbose: int = 0,
-                 continue_on_errors: bool = False) -> None:
+                 apk_cache: Dict[str, Dict[str, Any]], errors: Dict[str, List[Dict[str, Any]]],
+                 verbose: int = 0, continue_on_errors: bool = False) -> None:
     """
     Process APKs (tc.apk_paths).
 
@@ -1613,7 +1620,12 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
             print(f"Processing {str(apkfile)!r}...")
         ts = timestamps.get(apkfile.name, tc.timestamp)
         try:
-            apk = get_apk_info(apkfile, ts, java_stuff=tc.java_stuff)
+            sha256 = get_sha256(apkfile)
+            if (capk := apk_cache.get(sha256)) and capk["filename"] == str(apkfile):
+                apk = Apk.from_dict(capk)
+            else:
+                apk = get_apk_info(apkfile, ts, java_stuff=tc.java_stuff, sha256=sha256)
+                apk_cache[sha256] = apk.to_dict()
             man = apk.manifest
             if verbose:
                 print(f"  {man.appid!r}:{man.version_code} ({man.version_name!r})")
@@ -1707,14 +1719,16 @@ def main() -> None:
     @click.option("--continue-on-errors", is_flag=True,
                   help="Skip APKs with errors and append to errors.json.")
     @click.option("--exit-code", is_flag=True, help="Exit with code 5 on skipped errors.")
+    @click.option("--load-apk-cache", is_flag=True, help="Load APK cache.")
+    @click.option("--save-apk-cache", is_flag=True, help="Save APK cache.")
     @click.option("--no-write-index", "write_index", flag_value=False, default=True,
                   help="Do not write index.")
     @click.pass_context
-    def update(ctx: click.Context, /, *args: Any, exit_code: bool, **kwargs: Any) -> None:
+    def update(ctx: click.Context, /, exit_code: bool, **kwargs: Any) -> None:
         if exit_code and not kwargs["continue_on_errors"]:
             raise click.exceptions.BadParameter(
                 "Conflicting options: --exit-code without --continue-on-errors.", ctx)
-        if not do_update(tc, *args, **kwargs) and exit_code:
+        if not do_update(tc, **kwargs) and exit_code:
             sys.exit(5)
 
     def _cli_alias(alias: str, commands: List[str]) -> None:
