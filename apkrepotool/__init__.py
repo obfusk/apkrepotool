@@ -200,6 +200,16 @@ class Manifest:
     label: Optional[str]
     png_icons: Optional[List[str]]
 
+    @classmethod
+    def from_dict(_cls, d: Dict[str, Any]) -> Manifest:
+        """Create from dict (to load from JSON)."""
+        return Manifest(**dict(d, features=[Feature(**f) for f in d["features"]],
+                               permissions=[Permission(**p) for p in d["permissions"]]))
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict (to save as JSON)."""
+        return dataclasses.asdict(self)
+
 
 @dataclass(frozen=True)
 class Apk:
@@ -211,6 +221,15 @@ class Apk:
     fdroid_sig: str
     added: int
     manifest: Manifest
+
+    @classmethod
+    def from_dict(_cls, d: Dict[str, Any]) -> Apk:
+        """Create from dict (to load from JSON)."""
+        return Apk(**dict(d, manifest=Manifest.from_dict(d["manifest"])))
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict (to save as JSON)."""
+        return dataclasses.asdict(self)
 
 
 @dataclass(frozen=True)
@@ -633,6 +652,21 @@ def get_apk_info(apkfile: Path, added: int = 0, *, java_stuff: Optional[JavaStuf
     signing_keys=['fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8']
     fdroid_sig='506ceb2a3116981827a3990f3446d3af'
     added=0
+    >>> Apk.from_dict(apk.to_dict()) == apk
+    True
+
+    >>> apk = get_apk_info(Path("test/test-repo/repo/catima-v2.29.0.apk"))
+    >>> for field in dataclasses.fields(apk):
+    ...     if field.name != "manifest":
+    ...         print(f"{field.name}={getattr(apk, field.name)!r}")
+    filename='test/test-repo/repo/catima-v2.29.0.apk'
+    size=4338901
+    sha256='288f601d85b4a888f73e76e730a7fde984bf9727d9ab7ab05872014c4aa80f2f'
+    signing_keys=['d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af62c67eb3']
+    fdroid_sig='3ac7d97e44e06b76b63f609e9ea99371'
+    added=0
+    >>> Apk.from_dict(apk.to_dict()) == apk
+    True
 
     """
     size = apkfile.stat().st_size
@@ -662,6 +696,20 @@ def get_manifest(apkfile: Path) -> Manifest:
     abis=['armeabi']
     label='Tiny App for CTS'
     png_icons=None
+
+    >>> manifest = get_manifest(Path("test/test-repo/repo/catima-v2.29.0.apk"))
+    >>> for field in dataclasses.fields(manifest):
+    ...     print(f"{field.name}={getattr(manifest, field.name)!r}")
+    appid='me.hackerchick.catima'
+    version_code=134
+    version_name='2.29.0'
+    min_sdk=21
+    target_sdk=34
+    features=[Feature(name='android.hardware.camera')]
+    permissions=[Permission(name='android.permission.CAMERA', min_sdk_version=None, max_sdk_version=None), Permission(name='android.permission.READ_EXTERNAL_STORAGE', min_sdk_version=None, max_sdk_version=23), Permission(name='me.hackerchick.catima.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION', min_sdk_version=None, max_sdk_version=None)]
+    abis=[]
+    label='Catima'
+    png_icons=['res/o-.png', 'res/RJ.png', 'res/FS.png', 'res/yn.png', 'res/9w.png']
 
     """
     if _have_extended_manifest:
@@ -1249,6 +1297,19 @@ def load_errors(parent_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
 def save_errors(parent_dir: Path, errors: Dict[str, List[Dict[str, Any]]]) -> None:
     """Save errors.json."""
     save_json(parent_dir / "errors.json", errors, pretty=True)
+
+
+def load_apk_cache(parent_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """Load apk-cache.json."""
+    try:
+        return load_json(parent_dir / "apk-cache.json")
+    except FileNotFoundError:
+        return {}
+
+
+def save_apk_cache(parent_dir: Path, apks: Dict[str, Dict[str, Any]]) -> None:
+    """Save apk-cache.json."""
+    save_json(parent_dir / "apk-cache.json", apks, pretty=True)
 
 
 def load_json(path: Path) -> Dict[str, Any]:
