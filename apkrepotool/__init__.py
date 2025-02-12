@@ -477,7 +477,7 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
             validate_config_yaml(data, config_file)
         aliases = {k: [v] if isinstance(v, str) else v for k, v in data.get("aliases", {}).items()}
         for alias, commands in aliases.items():
-            if alias in _hooks:
+            if alias in _builtin_hooks:
                 raise Error(f"Conflicting alias: {alias!r}")
             for command in commands:
                 if not (args := command.split()):
@@ -487,11 +487,11 @@ def parse_config_yaml(config_file: Path, *, validate: bool = True) -> Config:
         hooks = {}
         for h in data.get("hooks", []):
             # FIXME: allow overriding builtin hooks?!
-            if h["name"] in hooks or h["name"] in _hooks or h["name"] in aliases:
+            if h["name"] in hooks or h["name"] in _builtin_hooks or h["name"] in aliases:
                 raise Error(f"Conflicting hook: {h['name']!r}")
             hooks[h["name"]] = HookConfig(h["name"], info=h["info"],
                                           config=h.get("config", {}), builtin=False)
-        for hook in _hooks.values():
+        for hook in _builtin_hooks.values():
             # FIXME: use hook config from YAML!
             hooks[hook.name] = HookConfig(hook.name, info=hook.info, config={}, builtin=True)
         return Config(
@@ -1553,13 +1553,14 @@ def load_hook(hook: Hook, tc: ToolConfig) -> types.ModuleType:
 
 
 _loaded_hooks: Dict[str, Hook] = {}
-_hooks = {
+_builtin_hooks = {
     h.name: h for h in [
         Hook("extract-icons", info="extract PNG icons from APKs", builtin=True),
         Hook("link", info="print repo link", builtin=True),
         Hook("lint", info="lint recipes", builtin=True),
     ]
 }
+_hooks = _builtin_hooks.copy()
 
 
 # FIXME
