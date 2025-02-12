@@ -1666,7 +1666,8 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
             apks[man.appid][man.version_code] = apk
             timestamps.setdefault(apkfile.name, ts)
             times.setdefault(man.appid, set()).add(ts)
-            apk_cache[sha256] = apk.to_dict()
+            if sha256 not in apk_cache:
+                apk_cache[sha256] = apk.to_dict()
 
 
 # FIXME: log missing app name?!
