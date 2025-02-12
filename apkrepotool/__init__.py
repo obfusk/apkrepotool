@@ -977,10 +977,13 @@ def make_diffs(repo_dir: Path, cache_dir: Path, v2_data: Dict[str, Any], *,
     return diffs
 
 
-# FIXME: APK cache
 def update_cache(cache_dir: Path, v2_data: Dict[str, Any], ts: int, *,
                  pretty: bool = False, verbose: int = 0) -> None:
-    """Update cache."""
+    """
+    Update cache.
+
+    NB: index cache only, APK cache is handled elsewhere.
+    """
     save_json(cache_dir / "repo" / f"{ts}.json", v2_data,
               name=f"{cache_dir.name}/repo/{ts}.json", pretty=pretty, verbose=verbose)
     for p in sorted((cache_dir / "repo").glob("*.json"), key=lambda p: int(p.stem))[:-10]:
@@ -1670,7 +1673,6 @@ def process_apks(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]], apps: Dict[
                 apk_cache[sha256] = apk.to_dict()
 
 
-# FIXME: log missing app name?!
 def process_meta(tc: ToolConfig, *, apks: Dict[str, Dict[int, Apk]],
                  apps: Dict[str, App], meta: Dict[str, Dict[str, Metadata]],
                  verbose: int = 0, continue_on_errors: bool = False) -> None:
