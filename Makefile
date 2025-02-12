@@ -46,16 +46,16 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
-	cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) update -v
+	cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) update -v --save-apk-cache
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/entry-2ndrun.json \
 	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
 	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
-		      -e 's!diff/[0-9]+!diff/TIMESTAMP!' ) \
+	              -e 's!diff/[0-9]+!diff/TIMESTAMP!' ) \
 	  <( jq < test/test-repo/repo/entry.json \
 	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
 	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
-		      -e 's!diff/[0-9]+!diff/TIMESTAMP!' )
+	              -e 's!diff/[0-9]+!diff/TIMESTAMP!' )
 	diff -Naur \
 	  <( jq < test/test-repo-reference-data/index-v1.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
@@ -66,6 +66,22 @@ test-repo:
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' ) \
 	  <( jq < test/test-repo/repo/index-v2.json \
 	     | sed -r '/^ *"(timestamp|added|lastUpdated)":/d' )
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/apks.json \
+	     | sed -r '/^ *"added":/d' ) \
+	  <( jq < test/test-repo/cache/apks.json \
+	     | sed -r '/^ *"added":/d' )
+	cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) update -v \
+	  --load-apk-cache --no-write-index
+	diff -Naur \
+	  <( jq < test/test-repo-reference-data/entry-2ndrun.json \
+	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
+	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
+	              -e 's!diff/[0-9]+!diff/TIMESTAMP!' ) \
+	  <( jq < test/test-repo/repo/entry.json \
+	     | sed -r -e '/^ *"(timestamp|sha256)":/d' \
+	              -e 's/"[0-9]+":/"TIMESTAMP":/' \
+	              -e 's!diff/[0-9]+!diff/TIMESTAMP!' )
 	diff -Naur <( cd test/test-repo && APKREPOTOOL_DIR=.tmp $(APKREPOTOOL) link ) \
 	  <( printf '%s%s\n' https://example.com/test/repo/?fingerprint= \
 	     D79397F1A5615239F6D51DAF4814C56A1B9BE35B08B89CC472D801626D22FE7D )

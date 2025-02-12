@@ -1,0 +1,207 @@
+{
+  "192ac25e6a55c4c2ad1ac96dcb7576a8c64864e065e5170aaa4aa4139a540bfe": {
+    "filename": "repo/catima-v2.28.0.apk",
+    "size": 4318365,
+    "sha256": "192ac25e6a55c4c2ad1ac96dcb7576a8c64864e065e5170aaa4aa4139a540bfe",
+    "signing_keys": [
+      "d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af62c67eb3"
+    ],
+    "fdroid_sig": "3ac7d97e44e06b76b63f609e9ea99371",
+    "added": 1739387199000,
+    "manifest": {
+      "appid": "me.hackerchick.catima",
+      "version_code": 133,
+      "version_name": "2.28.0",
+      "min_sdk": 21,
+      "target_sdk": 34,
+      "features": [
+        {
+          "name": "android.hardware.camera"
+        }
+      ],
+      "permissions": [
+        {
+          "name": "android.permission.CAMERA",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "android.permission.READ_EXTERNAL_STORAGE",
+          "min_sdk_version": null,
+          "max_sdk_version": 23
+        },
+        {
+          "name": "me.hackerchick.catima.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        }
+      ],
+      "abis": [],
+      "label": "Catima",
+      "png_icons": [
+        "res/o-.png",
+        "res/RJ.png",
+        "res/FS.png",
+        "res/yn.png",
+        "res/9w.png"
+      ],
+      "webp_icons": null,
+      "xml_icons": [
+        "res/BW.xml"
+      ]
+    }
+  },
+  "288f601d85b4a888f73e76e730a7fde984bf9727d9ab7ab05872014c4aa80f2f": {
+    "filename": "repo/catima-v2.29.0.apk",
+    "size": 4338901,
+    "sha256": "288f601d85b4a888f73e76e730a7fde984bf9727d9ab7ab05872014c4aa80f2f",
+    "signing_keys": [
+      "d405cd69ede4c22074c328fb825689a84ab3fca4b3fdf0b6cc1333af62c67eb3"
+    ],
+    "fdroid_sig": "3ac7d97e44e06b76b63f609e9ea99371",
+    "added": 1739387199000,
+    "manifest": {
+      "appid": "me.hackerchick.catima",
+      "version_code": 134,
+      "version_name": "2.29.0",
+      "min_sdk": 21,
+      "target_sdk": 34,
+      "features": [
+        {
+          "name": "android.hardware.camera"
+        }
+      ],
+      "permissions": [
+        {
+          "name": "android.permission.CAMERA",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "android.permission.READ_EXTERNAL_STORAGE",
+          "min_sdk_version": null,
+          "max_sdk_version": 23
+        },
+        {
+          "name": "me.hackerchick.catima.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        }
+      ],
+      "abis": [],
+      "label": "Catima",
+      "png_icons": [
+        "res/o-.png",
+        "res/RJ.png",
+        "res/FS.png",
+        "res/yn.png",
+        "res/9w.png"
+      ],
+      "webp_icons": null,
+      "xml_icons": [
+        "res/BW.xml"
+      ]
+    }
+  },
+  "31fd022fdbc883e5fb25409c39fcc6a7ba6973c53a94b9edfc2a8df6404775bd": {
+    "filename": "repo/com.starry.greenstash_360.apk",
+    "size": 6496680,
+    "sha256": "31fd022fdbc883e5fb25409c39fcc6a7ba6973c53a94b9edfc2a8df6404775bd",
+    "signing_keys": [
+      "5dfe06da0fe3b0813f3f3dc5305699c2dbb9dfdbab1349da7c41c59d2fcf319c"
+    ],
+    "fdroid_sig": "a1eb693dbfb050ecc925823b0b7f9107",
+    "added": 1739387199000,
+    "manifest": {
+      "appid": "com.starry.greenstash",
+      "version_code": 360,
+      "version_name": "3.6.0",
+      "min_sdk": 24,
+      "target_sdk": 34,
+      "features": [],
+      "permissions": [
+        {
+          "name": "android.permission.POST_NOTIFICATIONS",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "android.permission.RECEIVE_BOOT_COMPLETED",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "android.permission.USE_BIOMETRIC",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "android.permission.USE_FINGERPRINT",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        },
+        {
+          "name": "com.starry.greenstash.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        }
+      ],
+      "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86",
+        "x86_64"
+      ],
+      "label": "GreenStash",
+      "png_icons": [
+        "res/o-.png",
+        "res/RJ.png",
+        "res/FS.png",
+        "res/yn.png",
+        "res/9w.png"
+      ],
+      "webp_icons": null,
+      "xml_icons": [
+        "res/BW.xml"
+      ]
+    }
+  },
+  "23161e736b07572c5625e9eba1f485611faa80e0955f5e0f5c6f9e20de279b27": {
+    "filename": "repo/jiten-webview-1.0.3.apk",
+    "size": 2736571,
+    "sha256": "23161e736b07572c5625e9eba1f485611faa80e0955f5e0f5c6f9e20de279b27",
+    "signing_keys": [
+      "e3603f6a1c0a41cb00ee821bbc4d07032d4b2ca26d03745d4a26ebebfbc7d4fd"
+    ],
+    "fdroid_sig": "1591c1afc9534a012100d595ea3bbb38",
+    "added": 1739387199000,
+    "manifest": {
+      "appid": "dev.obfusk.jiten_webview",
+      "version_code": 202108010,
+      "version_name": "1.0.3",
+      "min_sdk": 21,
+      "target_sdk": 30,
+      "features": [],
+      "permissions": [
+        {
+          "name": "android.permission.INTERNET",
+          "min_sdk_version": null,
+          "max_sdk_version": null
+        }
+      ],
+      "abis": [],
+      "label": "Jiten [Online]",
+      "png_icons": [
+        "res/CG.png",
+        "res/D2.png",
+        "res/jy.png",
+        "res/SD.png",
+        "res/u3.png"
+      ],
+      "webp_icons": null,
+      "xml_icons": [
+        "res/uF.xml"
+      ]
+    }
+  }
+}
