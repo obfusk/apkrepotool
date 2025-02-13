@@ -49,7 +49,7 @@
 
 * [x] get app name from APK
 * [x] get PNG icons from APK
-* [ ] get webp icons from APK
+* [x] get webp icons from APK
 * [ ] get XML icons from APK
 * [ ] `apkcache.json` -> `timestamps.json` script
 * [ ] "API" ?!
