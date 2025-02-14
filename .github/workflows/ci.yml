@@ -46,7 +46,7 @@ jobs:
           python3 -m pip install --upgrade pip
           # FIXME: use latest tag again when there's a new release
           python3 -m pip install git+https://github.com/obfusk/reproducible-apk-tools.git@master
-          python3 -m pip install Pillow flake8 pylint coverage
+          python3 -m pip install Pillow CairoSVG flake8 pylint coverage
       - name: Install mypy
         run: python3 -m pip install mypy types-jsonschema
         continue-on-error:
