@@ -23,6 +23,7 @@ ARGB = re.compile(r"\A#[0-9a-f]{8}\Z")
 CAP = dict(enumerate(("butt", "round", "square")))
 JOIN = dict(enumerate(("miter", "round", "bevel")))
 FILL = dict(enumerate(("evenodd", "nonzero")))
+GRADIENT = dict(enumerate(("linear", "radial", "sweep")))
 TAGMAP = {"vector": "svg", "group": "g", "path": "path"}
 
 
@@ -40,8 +41,10 @@ def extract_icon(zf: zipfile.ZipFile, filename: str, *, size: int = 512) -> byte
 
 
 # FIXME: check end tags?
-def _extract_icon(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filename: str,
-                  *, resources: Optional[binres.ResourceTableChunk], size: int) -> bytes:
+def _extract_icon(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filename: str, *,
+                  resources: Optional[binres.ResourceTableChunk], size: int) -> bytes:
+    if filename not in infos:
+        raise Error(f"Entry not found: {filename!r}")
     axml_chunk = binres.read_chunk(zf.read(infos[filename]))[0]
     if not isinstance(axml_chunk, binres.XMLChunk):
         raise Error("Unable to parse AXML")
@@ -49,7 +52,7 @@ def _extract_icon(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filena
     for i, c in enumerate(axml_chunk.children):
         if isinstance(c, binres.XMLElemStartChunk):
             if c.name == "vector":
-                return _extract_vector(axml_chunk.children[i:], resources=resources, size=size)
+                return _extract_vector(zf, infos, axml_chunk.children[i:], resources=resources, size=size)
             if c.name == "adaptive-icon":
                 if adaptive_icon:
                     raise Error("Duplicate <adaptive-icon>")
@@ -105,6 +108,8 @@ def _extract_drawable(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], dr
     if drawable.endswith(".xml"):
         bio = io.BytesIO(_extract_icon(zf, infos, drawable, resources=resources, size=size))
     elif drawable.endswith(".png"):
+        if drawable not in infos:
+            raise Error(f"Entry not found: {drawable!r}")
         bio = io.BytesIO(zf.read(infos[drawable]))
     else:
         raise Error(f"Unsupported drawable: {drawable!r}")
@@ -118,10 +123,9 @@ def _extract_drawable(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], dr
 
 
 # FIXME: <shape>? <inset>?
-def _extract_vector(children: Tuple[binres.Chunk, ...], *,
-                    resources: Optional[binres.ResourceTableChunk], size: int) -> bytes:
-    tb = ET.TreeBuilder()
-    vector = None
+def _extract_vector(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], children: Tuple[binres.Chunk, ...],
+                    *, resources: Optional[binres.ResourceTableChunk], size: int) -> bytes:
+    tb, defs, vector = ET.TreeBuilder(), ET.Element("defs"), None
     tag_stack: List[binres.XMLElemStartChunk] = []
     for c in children:
         if isinstance(c, binres.XMLElemStartChunk):
@@ -136,7 +140,7 @@ def _extract_vector(children: Tuple[binres.Chunk, ...], *,
             elif c.name == "group":
                 _convert_group(tb, c)
             elif c.name == "path":
-                _convert_path(tb, c, resources=resources)
+                _convert_path(zf, infos, tb, c, defs=defs, resources=resources)
             else:
                 raise Error(f"Unsupported tag: {c.name!r}")
         elif isinstance(c, binres.XMLElemEndChunk):
@@ -148,7 +152,11 @@ def _extract_vector(children: Tuple[binres.Chunk, ...], *,
             if c.name == "vector":
                 break
     bio = io.BytesIO()
-    ET.ElementTree(tb.close()).write(bio)
+    elem = tb.close()
+    if len(defs):
+        elem.insert(0, defs)
+    ET.ElementTree(elem).write(bio)
+    print(bio.getvalue().decode())  # FIXME
     data = cairosvg.svg2png(bytestring=bio.getvalue(), output_width=size, output_height=size)
     assert isinstance(data, bytes)
     return data
@@ -174,19 +182,18 @@ def _convert_group(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk) -> None:
     ty = c.attr_as_float("translateY", android=True, optional=True)
     scale_x = str(sx) if sx is not None else "1"
     scale_y = str(sy) if sy is not None else "1"
-    trans_x = str(tx) if tx is not None else "0"
-    trans_y = str(ty) if ty is not None else "0"
-    transform = f"translate({trans_x}, {trans_y}) scale({scale_x}, {scale_y})"
+    transform = f"translate({str(tx or 0)}, {str(ty or 0)}) scale({scale_x}, {scale_y})"
     tb.start("g", {"transform": transform})
 
 
-def _convert_path(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk, *,
+def _convert_path(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo],
+                  tb: ET.TreeBuilder, c: binres.XMLElemStartChunk, *, defs: ET.Element,
                   resources: Optional[binres.ResourceTableChunk]) -> None:
     _expect_attrs(c, "pathData", "fillColor", "strokeColor", "strokeWidth", "strokeAlpha",
                   "fillAlpha", "strokeLineCap", "strokeLineJoin", "fillType")
     data = c.attr_as_str("pathData", android=True, optional=True) or ""
-    fill = _colour(c, "fillColor", resources=resources)
-    stroke = _colour(c, "strokeColor", resources=resources)
+    fill = _colour(zf, infos, c, "fillColor", defs=defs, resources=resources)
+    stroke = _colour(zf, infos, c, "strokeColor", defs=defs, resources=resources)
     sw = c.attr_as_float("strokeWidth", android=True, optional=True)
     sa = c.attr_as_float("strokeAlpha", android=True, optional=True)
     fa = c.attr_as_float("fillAlpha", android=True, optional=True)
@@ -196,11 +203,11 @@ def _convert_path(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk, *,
     try:
         attrs = {
             "d": data, "fill": fill, "stroke": stroke,
-            "stroke-width": str(sw) if sw is not None else "0",
+            "stroke-width": str(sw or 0),
             "stroke-opacity": str(sa) if sa is not None else "1",
             "fill-opacity": str(fa) if fa is not None else "1",
-            "stroke-linecap": CAP[slc if slc is not None else 0],
-            "stroke-linejoin": JOIN[slj if slj is not None else 0],
+            "stroke-linecap": CAP[slc or 0],
+            "stroke-linejoin": JOIN[slj or 0],
             "fill-rule": FILL[ft if ft is not None else 1],
         }
     except KeyError as e:
@@ -215,15 +222,69 @@ def _expect_attrs(c: binres.XMLElemStartChunk, *attrs: str) -> None:
             raise Error(f"Unsupported attr for <{c.name}>: {attr!r}")
 
 
-# FIXME: <gradient>?
-def _colour(c: binres.XMLElemStartChunk, attr: str, *,
-            resources: Optional[binres.ResourceTableChunk]) -> str:
+def _colour(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo],
+            c: binres.XMLElemStartChunk, attr: str, *, defs: Optional[ET.Element],
+            default: str = "none", resources: Optional[binres.ResourceTableChunk]) -> str:
     if not (a := c.attrs_as_dict.get(f"{{{binres.SCHEMA_ANDROID}}}{attr}")):
-        return "none"
+        return default
     colour = binres.brv_str_deref(a.typed_value, a.raw_value, resources=resources)
-    if not ARGB.fullmatch(colour):
-        raise Error(f"Unsupported colour value: {colour!r}")
-    return "none" if colour == "#00000000" else _rgba(colour)
+    if ARGB.fullmatch(colour):
+        return "none" if colour == "#00000000" else _rgba(colour)
+    if defs is not None and colour.endswith(".xml"):
+        return _extract_gradient(zf, infos, colour, defs=defs, resources=resources)
+    raise Error(f"Unsupported colour value: {colour!r}")
+
+
+def _extract_gradient(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filename: str,
+                      *, defs: ET.Element, resources: Optional[binres.ResourceTableChunk]) -> str:
+    if filename not in infos:
+        raise Error(f"Entry not found: {filename!r}")
+    axml_chunk = binres.read_chunk(zf.read(infos[filename]))[0]
+    if not isinstance(axml_chunk, binres.XMLChunk):
+        raise Error("Unable to parse AXML")
+    gradient, stops = None, []
+    for i, c in enumerate(axml_chunk.children):
+        if isinstance(c, binres.XMLElemStartChunk):
+            if c.name == "gradient":
+                if gradient:
+                    raise Error("Duplicate <gradient>")
+                gradient = c
+            elif not gradient:
+                raise Error("Expected <gradient>")
+            elif c.name == "item":
+                _expect_attrs(c, "color", "offset")
+                colour = _colour(zf, infos, c, "color", defs=None, default="#000000", resources=resources)
+                off = c.attr_as_float("offset", android=True, optional=True)
+                stops.append(ET.Element("stop", {"stop-color": colour, "offset": str(off or 0)}))
+            else:
+                raise Error(f"Unsupported tag: {c.name!r}")
+    if not gradient:
+        raise Error("Expected <gradient>")
+    _expect_attrs(gradient, "angle", "type", "centerX", "centerY", "gradientRadius",
+                  "startX", "startY", "endX", "endY")
+    ty = gradient.attr_as_int("type", android=True, optional=True)
+    angle = gradient.attr_as_float("angle", android=True, optional=True)
+    gtype = GRADIENT.get(ty or 0, str(ty))
+    if angle is not None and angle % 45 != 0:
+        raise Error(f"Unsupported <gradient> angle: {angle}")
+    attrs = {"id": f"gradient_{len(defs)}"}
+    if angle is not None:
+        attrs["gradientTransform"] = f"rotate({angle})"
+    if gtype == "linear":
+        attrs["x1"] = str(gradient.attr_as_float("startX", android=True))
+        attrs["x2"] = str(gradient.attr_as_float("endX", android=True))
+        attrs["y1"] = str(gradient.attr_as_float("startY", android=True))
+        attrs["y2"] = str(gradient.attr_as_float("endY", android=True))
+    elif gtype == "radial":
+        attrs["cx"] = str(gradient.attr_as_float("centerX", android=True))
+        attrs["cy"] = str(gradient.attr_as_float("centerY", android=True))
+        attrs["r"] = str(gradient.attr_as_float("gradientRadius", android=True))
+    else:
+        raise Error(f"Unsupported <gradient> type: {gtype!r}")
+    elem = ET.Element(f"{gtype}Gradient", attrs)
+    elem.extend(stops)
+    defs.append(elem)
+    return f"url(#{attrs['id']})"
 
 
 def _rgba(colour: str) -> str:
