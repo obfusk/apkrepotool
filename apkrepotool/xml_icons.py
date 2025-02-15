@@ -49,7 +49,7 @@ def _extract_icon(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filena
     for i, c in enumerate(axml_chunk.children):
         if isinstance(c, binres.XMLElemStartChunk):
             if c.name == "vector":
-                return _extract_vector(axml_chunk.children[i:], size=size)
+                return _extract_vector(axml_chunk.children[i:], resources=resources, size=size)
             if c.name == "adaptive-icon":
                 if adaptive_icon:
                     raise Error("Duplicate <adaptive-icon>")
@@ -118,7 +118,8 @@ def _extract_drawable(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], dr
 
 
 # FIXME: <shape>? <inset>?
-def _extract_vector(children: Tuple[binres.Chunk, ...], *, size: int) -> bytes:
+def _extract_vector(children: Tuple[binres.Chunk, ...], *,
+                    resources: Optional[binres.ResourceTableChunk], size: int) -> bytes:
     tb = ET.TreeBuilder()
     vector = None
     tag_stack: List[binres.XMLElemStartChunk] = []
@@ -135,7 +136,7 @@ def _extract_vector(children: Tuple[binres.Chunk, ...], *, size: int) -> bytes:
             elif c.name == "group":
                 _convert_group(tb, c)
             elif c.name == "path":
-                _convert_path(tb, c)
+                _convert_path(tb, c, resources=resources)
             else:
                 raise Error(f"Unsupported tag: {c.name!r}")
         elif isinstance(c, binres.XMLElemEndChunk):
@@ -179,13 +180,13 @@ def _convert_group(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk) -> None:
     tb.start("g", {"transform": transform})
 
 
-# FIXME: resources?
-def _convert_path(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk) -> None:
+def _convert_path(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk, *,
+                  resources: Optional[binres.ResourceTableChunk]) -> None:
     _expect_attrs(c, "pathData", "fillColor", "strokeColor", "strokeWidth", "strokeAlpha",
                   "fillAlpha", "strokeLineCap", "strokeLineJoin", "fillType")
     data = c.attr_as_str("pathData", android=True, optional=True) or ""
-    fill = _colour(c, "fillColor")
-    stroke = _colour(c, "strokeColor")
+    fill = _colour(c, "fillColor", resources=resources)
+    stroke = _colour(c, "strokeColor", resources=resources)
     sw = c.attr_as_float("strokeWidth", android=True, optional=True)
     sa = c.attr_as_float("strokeAlpha", android=True, optional=True)
     fa = c.attr_as_float("fillAlpha", android=True, optional=True)
@@ -214,14 +215,14 @@ def _expect_attrs(c: binres.XMLElemStartChunk, *attrs: str) -> None:
             raise Error(f"Unsupported attr for <{c.name}>: {attr!r}")
 
 
-# FIXME: resources?
-def _colour(c: binres.XMLElemStartChunk, attr: str) -> str:
+# FIXME: <gradient>?
+def _colour(c: binres.XMLElemStartChunk, attr: str, *,
+            resources: Optional[binres.ResourceTableChunk]) -> str:
     if not (a := c.attrs_as_dict.get(f"{{{binres.SCHEMA_ANDROID}}}{attr}")):
         return "none"
-    t, T = a.typed_value.type, binres.BinResVal.Type
-    if t not in (T.INT_COLOR_ARGB8, T.INT_COLOR_RGB8, T.INT_COLOR_ARGB4, T.INT_COLOR_RGB4):
-        raise Error("Expected colour value")
-    colour = binres.brv_str_deref(a.typed_value, a.raw_value)
+    colour = binres.brv_str_deref(a.typed_value, a.raw_value, resources=resources)
+    if not ARGB.fullmatch(colour):
+        raise Error(f"Unsupported colour value: {colour!r}")
     return "none" if colour == "#00000000" else _rgba(colour)
 
 
