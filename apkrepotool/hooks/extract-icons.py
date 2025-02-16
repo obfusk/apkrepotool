@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import zipfile
 
@@ -13,6 +14,57 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import apkrepotool
+
+
+@functools.lru_cache(maxsize=None)
+def have_webp_support() -> bool:
+    r"""
+    Memoised check for WebP dependencies (Pillow with WebP support).
+
+    >>> have_webp_support()
+    True
+
+    """
+    log = logging.getLogger(__name__)
+    try:
+        import PIL.Image
+        import PIL.features
+        PIL.Image.Image
+    except (ImportError, AttributeError):
+        log.warning("Unable to import Pillow.")
+        return False
+    try:
+        if PIL.features.check_module("webp"):
+            return True
+    except ValueError:
+        pass
+    log.warning("Pillow does not support WebP.")
+    return False
+
+
+@functools.lru_cache(maxsize=None)
+def have_xml_support() -> bool:
+    r"""
+    Memoised check for XML icon dependencies (Pillow and CairoSVG).
+
+    >>> have_xml_support()
+    True
+
+    """
+    log = logging.getLogger(__name__)
+    try:
+        import cairosvg         # type: ignore[import-untyped]
+        cairosvg.svg2png
+    except (ImportError, AttributeError):
+        log.warning("Unable to import CairoSVG.")
+        return False
+    try:
+        import PIL.Image
+        PIL.Image.Image
+    except (ImportError, AttributeError):
+        log.warning("Unable to import Pillow.")
+        return False
+    return True
 
 
 def process_apks(tc: apkrepotool.ToolConfig, *,
@@ -26,8 +78,8 @@ def process_apks(tc: apkrepotool.ToolConfig, *,
         apks[man.appid][man.version_code] = (apkfile, man)
 
 
-def process_recipes(tc: apkrepotool.ToolConfig, *, try_webp: bool, try_xml: bool, verbose: bool,
-                    apks: Dict[str, Dict[int, Tuple[Path, apkrepotool.Manifest]]]) -> None:
+def process_recipes(tc: apkrepotool.ToolConfig, *, skip_png: bool, try_webp: bool, try_xml: bool,
+                    verbose: bool, apks: Dict[str, Dict[int, Tuple[Path, apkrepotool.Manifest]]]) -> None:
     """Process recipes."""
     for recipe in tc.recipe_paths:
         if verbose:
@@ -37,7 +89,8 @@ def process_recipes(tc: apkrepotool.ToolConfig, *, try_webp: bool, try_xml: bool
         if icon_path.exists():
             continue
         for _, (apkfile, manifest) in sorted(apks.get(appid, {}).items(), reverse=True):
-            if icon_file := extract_icon(apkfile, manifest, icon_path, try_webp=try_webp, try_xml=try_xml):
+            if icon_file := extract_icon(apkfile, manifest, icon_path, skip_png=skip_png,
+                                         try_webp=try_webp, try_xml=try_xml):
                 if verbose:
                     print(f"Saved {str(icon_path)!r} using {icon_file!r} from {str(apkfile)!r}.")
                 break
@@ -47,35 +100,32 @@ def process_recipes(tc: apkrepotool.ToolConfig, *, try_webp: bool, try_xml: bool
 
 
 def extract_icon(apkfile: Path, manifest: apkrepotool.Manifest, icon_path: Path, *,
-                 try_webp: bool = False, try_xml: bool = False) -> Optional[str]:
-    """Extract best .png (or .webp) icon from APK."""
+                 skip_png: bool = False, try_webp: bool = False, try_xml: bool = False) -> Optional[str]:
+    """Extract best .png (or converted .webp or .xml) icon from APK."""
     log = logging.getLogger(__name__)
     with zipfile.ZipFile(apkfile) as zf:
         infos = {i.orig_filename: i for i in zf.infolist()}
-        for png_icon in (manifest.png_icons or []):
-            if png_icon not in infos:
-                log.warning(f"Missing {png_icon!r} from {str(apkfile)!r}.")
-                continue
-            if extract_png_from_apk(apkfile, zf, infos[png_icon], icon_path):
-                return png_icon
-        if try_webp:
+        if not skip_png:
+            for png_icon in (manifest.png_icons or []):
+                if png_icon not in infos:
+                    log.warning(f"Missing {png_icon!r} from {str(apkfile)!r}.")
+                    continue
+                if extract_png_from_apk(apkfile, zf, infos[png_icon], icon_path):
+                    return png_icon
+        if try_webp and have_webp_support():
             for webp_icon in (manifest.webp_icons or []):
                 if webp_icon not in infos:
                     log.warning(f"Missing {webp_icon!r} from {str(apkfile)!r}.")
                     continue
-                if result := convert_webp_from_apk(apkfile, zf, infos[webp_icon], icon_path):
+                if convert_webp_from_apk(apkfile, zf, infos[webp_icon], icon_path):
                     return webp_icon
-                if result is None:  # webp support unavailable
-                    break
-        if try_xml:
+        if try_xml and have_xml_support():
             for xml_icon in (manifest.xml_icons or []):
                 if xml_icon not in infos:
                     log.warning(f"Missing {xml_icon!r} from {str(apkfile)!r}.")
                     continue
-                if result := convert_xml_from_apk(apkfile, zf, infos[xml_icon], icon_path):
+                if convert_xml_from_apk(apkfile, zf, infos[xml_icon], icon_path):
                     return xml_icon
-                if result is None:  # dependencies unavailable
-                    break
     return None
 
 
@@ -97,29 +147,22 @@ def extract_png_from_apk(apkfile: Path, zf: zipfile.ZipFile, info: zipfile.ZipIn
     return True
 
 
+# FIXME: delete on error?
 def convert_webp_from_apk(apkfile: Path, zf: zipfile.ZipFile, info: zipfile.ZipInfo,
-                          icon_path: Path) -> Optional[bool]:
+                          icon_path: Path) -> bool:
     """
     Convert .webp from APK.
 
     Requires Pillow with WebP support.
     """
-    log = logging.getLogger(__name__)
-    try:
-        import PIL
-        import PIL.features
-        import PIL.Image
-    except ImportError:
-        log.warning("Unable to import Pillow.")
-        return None
-    if not PIL.features.check_module("webp"):
-        log.warning("Pillow does not support WebP.")
-        return None
+    import PIL
+    import PIL.Image
     try:
         with zf.open(info) as fh, PIL.Image.open(fh, formats=["WEBP"]) as im:
             icon_path.parent.mkdir(parents=True, exist_ok=True)
             im.save(icon_path, "PNG")
     except PIL.UnidentifiedImageError as e:
+        log = logging.getLogger(__name__)
         log.warning(f"Unable to open {info.orig_filename!r} from {str(apkfile)!r}: {e}.")
         return False
     return True
@@ -132,17 +175,13 @@ def convert_xml_from_apk(apkfile: Path, zf: zipfile.ZipFile, info: zipfile.ZipIn
 
     Requires Pillow and CairoSVG.
     """
-    log = logging.getLogger(__name__)
-    try:
-        import apkrepotool.xml_icons as xml_icons
-        import repro_apk.binres as binres
-    except ImportError:
-        log.warning("Unable to import xml_icons.")
-        return None
+    import apkrepotool.xml_icons as xml_icons
+    import repro_apk.binres as binres
     try:
         data = xml_icons.extract_icon(zf, info.orig_filename)
     except (xml_icons.Error, binres.Error) as e:
-        log.warning(f"Unable to use {info.orig_filename!r} from {str(apkfile)!r}: {e}.")
+        log = logging.getLogger(__name__)
+        log.warning(f"Unable to convert {info.orig_filename!r} from {str(apkfile)!r}: {e}.")
         return False
     icon_path.parent.mkdir(parents=True, exist_ok=True)
     with icon_path.open("wb") as fh:
@@ -152,17 +191,18 @@ def convert_xml_from_apk(apkfile: Path, zf: zipfile.ZipFile, info: zipfile.ZipIn
 
 # FIXME: how to properly handle errors?
 # FIXME: what if older APK has better quality icon?
-# FIXME: XML icons?!
 def run(tc: apkrepotool.ToolConfig, *args: str) -> None:
-    """Extract PNG (or convert WebP) icons from APKs with missing icons."""
+    """Extract PNG (or convert WebP or XML) icons from APKs with missing icons."""
     parser = argparse.ArgumentParser(prog="apkrepotool extract-icons")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--skip-png", action="store_true")
     parser.add_argument("--try-webp", action="store_true")
     parser.add_argument("--try-xml", action="store_true")
     opts = parser.parse_args(args)
     apks: Dict[str, Dict[int, Tuple[Path, apkrepotool.Manifest]]] = {}
     process_apks(tc, apks=apks)
-    process_recipes(tc, apks=apks, try_webp=opts.try_webp, try_xml=opts.try_xml, verbose=opts.verbose)
+    process_recipes(tc, apks=apks, skip_png=opts.skip_png, try_webp=opts.try_webp,
+                    try_xml=opts.try_xml, verbose=opts.verbose)
 
 
 # vim: set tw=80 sw=4 sts=4 et fdm=marker :

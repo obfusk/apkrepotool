@@ -10,7 +10,8 @@ import re
 import xml.etree.ElementTree as ET
 import zipfile
 
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import cairosvg                 # type: ignore[import-untyped]
 import PIL.Image
@@ -31,8 +32,15 @@ class Error(Exception):
     """Base class for errors."""
 
 
-def extract_icon(zf: zipfile.ZipFile, filename: str, *, size: int = 512) -> bytes:
+def extract_icon(apk: Union[zipfile.ZipFile, Path], filename: str, *, size: int = 512) -> bytes:
     """Extract XML icon by converting to SVG and then to PNG data."""
+    if isinstance(apk, zipfile.ZipFile):
+        return _extract_icon_zf(apk, filename, size=size)
+    with zipfile.ZipFile(apk) as zf:
+        return _extract_icon_zf(zf, filename, size=size)
+
+
+def _extract_icon_zf(zf: zipfile.ZipFile, filename: str, *, size: int) -> bytes:
     infos = {i.orig_filename: i for i in zf.infolist()}
     resources = binres.read_chunk(zf.read(infos[binres.ARSC_FILE]))[0] if binres.ARSC_FILE in infos else None
     if resources is not None and not isinstance(resources, binres.ResourceTableChunk):
@@ -156,24 +164,21 @@ def _extract_vector(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], chil
     if len(defs):
         elem.insert(0, defs)
     ET.ElementTree(elem).write(bio)
-    print(bio.getvalue().decode())  # FIXME
     data = cairosvg.svg2png(bytestring=bio.getvalue(), output_width=size, output_height=size)
     assert isinstance(data, bytes)
     return data
 
 
-# FIXME: tint?
-# FIXME: resources?
+# FIXME: tint? resources? use width/height? check viewportWidth == viewportHeight?
 def _convert_vector(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk) -> None:
+    # NB: width and height seem unneeded, autoMirrored seems safe to ignore
     _expect_attrs(c, "width", "height", "viewportWidth", "viewportHeight", "autoMirrored")
     vpw = c.attr_as_float("viewportWidth", android=True)
     vph = c.attr_as_float("viewportHeight", android=True)
-    viewbox = f"0 0 {vpw} {vph}"
-    tb.start("svg", {"xmlns": SCHEMA_SVG, "viewBox": viewbox})
+    tb.start("svg", {"xmlns": SCHEMA_SVG, "viewBox": f"0 0 {vpw} {vph}"})
 
 
-# FIXME: rotate, ...
-# FIXME: resources?
+# FIXME: rotate? resources?
 def _convert_group(tb: ET.TreeBuilder, c: binres.XMLElemStartChunk) -> None:
     _expect_attrs(c, "scaleX", "scaleY", "translateX", "translateY")
     sx = c.attr_as_float("scaleX", android=True, optional=True)
@@ -216,12 +221,13 @@ def _convert_path(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo],
 
 
 def _expect_attrs(c: binres.XMLElemStartChunk, *attrs: str) -> None:
-    expected_attrs = [f"{{{binres.SCHEMA_ANDROID}}}{a}" for a in attrs]
+    expected_attrs = set(f"{{{binres.SCHEMA_ANDROID}}}{a}" for a in attrs)
     for attr in c.attrs_as_dict:
         if attr not in expected_attrs:
             raise Error(f"Unsupported attr for <{c.name}>: {attr!r}")
 
 
+# NB: CairoSVG supports rgba() but not #RRGGBBAA
 def _colour(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], c: binres.XMLElemStartChunk,
             attr: str, *, defs: Optional[ET.Element], default: str = "none",
             resources: Optional[binres.ResourceTableChunk]) -> str:
@@ -236,6 +242,7 @@ def _colour(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], c: binres.XM
     raise Error(f"Unsupported colour value: {colour!r}")
 
 
+# NB: SVG doesn't support sweep gradients
 def _extract_gradient(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], filename: str,
                       *, defs: ET.Element, resources: Optional[binres.ResourceTableChunk]) -> str:
     if filename not in infos:
@@ -254,9 +261,9 @@ def _extract_gradient(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], fi
                 raise Error("Expected <gradient>")
             elif c.name == "item":
                 _expect_attrs(c, "color", "offset")
-                colour = _colour(zf, infos, c, "color", defs=None, default="#000000", resources=resources)
+                col = _colour(zf, infos, c, "color", defs=None, default="#000000", resources=resources)
                 off = c.attr_as_float("offset", android=True, optional=True)
-                stops.append(ET.Element("stop", {"stop-color": colour, "offset": str(off or 0)}))
+                stops.append(ET.Element("stop", {"stop-color": col, "offset": str(off or 0)}))
             else:
                 raise Error(f"Unsupported tag: {c.name!r}")
     if not gradient:
