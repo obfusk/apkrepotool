@@ -22,7 +22,7 @@ def have_webp_support() -> bool:
     Memoised check for WebP dependencies (Pillow with WebP support).
 
     >>> import sys
-    >>> "PyPy" in sys.version or have_webp_support()
+    >>> "__pypy__" in sys.builtin_module_names or have_webp_support()
     True
 
     """
