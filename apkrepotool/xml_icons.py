@@ -104,7 +104,7 @@ def _combine_images(bg: PIL.Image.Image, fg: PIL.Image.Image) -> bytes:
 def _extract_drawable(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], drawable: str, *,
                       resources: Optional[binres.ResourceTableChunk], size: int) -> PIL.Image.Image:
     if ARGB.fullmatch(drawable):
-        return PIL.Image.new("RGBA", (size, size), _rgba(drawable))
+        return PIL.Image.new("RGBA", (size, size), f"#{drawable[3:]}{drawable[1:3]}")
     if drawable.endswith(".xml"):
         bio = io.BytesIO(_extract_icon(zf, infos, drawable, resources=resources, size=size))
     elif drawable.endswith(".png"):
@@ -222,14 +222,15 @@ def _expect_attrs(c: binres.XMLElemStartChunk, *attrs: str) -> None:
             raise Error(f"Unsupported attr for <{c.name}>: {attr!r}")
 
 
-def _colour(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo],
-            c: binres.XMLElemStartChunk, attr: str, *, defs: Optional[ET.Element],
-            default: str = "none", resources: Optional[binres.ResourceTableChunk]) -> str:
+def _colour(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], c: binres.XMLElemStartChunk,
+            attr: str, *, defs: Optional[ET.Element], default: str = "none",
+            resources: Optional[binres.ResourceTableChunk]) -> str:
     if not (a := c.attrs_as_dict.get(f"{{{binres.SCHEMA_ANDROID}}}{attr}")):
         return default
     colour = binres.brv_str_deref(a.typed_value, a.raw_value, resources=resources)
     if ARGB.fullmatch(colour):
-        return "none" if colour == "#00000000" else _rgba(colour)
+        r, g, b = [int(x, 16) for x in (colour[3:5], colour[5:7], colour[7:9])]
+        return f"rgba({r}, {g}, {b}, {int(colour[1:3], 16) / 0xff})"
     if defs is not None and colour.endswith(".xml"):
         return _extract_gradient(zf, infos, colour, defs=defs, resources=resources)
     raise Error(f"Unsupported colour value: {colour!r}")
@@ -267,8 +268,8 @@ def _extract_gradient(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], fi
     gtype = GRADIENT.get(ty or 0, str(ty))
     if angle is not None and angle % 45 != 0:
         raise Error(f"Unsupported <gradient> angle: {angle}")
-    attrs = {"id": f"gradient_{len(defs)}"}
-    if angle is not None:
+    attrs = {"id": f"gradient_{len(defs)}", "gradientUnits": "userSpaceOnUse"}
+    if angle not in (None, 0):
         attrs["gradientTransform"] = f"rotate({angle})"
     if gtype == "linear":
         attrs["x1"] = str(gradient.attr_as_float("startX", android=True))
@@ -285,10 +286,6 @@ def _extract_gradient(zf: zipfile.ZipFile, infos: Dict[str, zipfile.ZipInfo], fi
     elem.extend(stops)
     defs.append(elem)
     return f"url(#{attrs['id']})"
-
-
-def _rgba(colour: str) -> str:
-    return colour if colour == "none" else f"#{colour[3:]}{colour[1:3]}"
 
 
 # vim: set tw=80 sw=4 sts=4 et fdm=marker :
